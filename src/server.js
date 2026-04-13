@@ -4,6 +4,7 @@ const path = require('path');
 const { calculateRSI, getRecommendation, calculateMultiTimeframeRSI } = require('./rsi');
 const { fetchCandles, fetchCurrentPrice } = require('./api');
 const { loadTokens, addToken, removeToken } = require('./config');
+const { openPosition, closePosition, getOpenPositions, getHistory, getStats } = require('./trades');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -175,6 +176,98 @@ app.get('/api/rsi', async (req, res) => {
   );
 
   res.json(results.map(r => r.status === 'fulfilled' ? r.value : { error: r.reason?.message }));
+});
+
+// ============================================================
+// Trading Simulation Routes
+// ============================================================
+
+/**
+ * POST /api/trade/buy - Open a simulated position
+ */
+app.post('/api/trade/buy', async (req, res) => {
+  const { symbol, amount } = req.body;
+  if (!symbol) return res.status(400).json({ error: 'Symbol is required' });
+
+  try {
+    const { price } = await fetchCurrentPrice(symbol);
+    if (!price) return res.status(400).json({ error: 'No se pudo obtener el precio' });
+
+    // Get current RSI
+    let rsiAtOpen = null;
+    try {
+      const { candles } = await fetchCandles(symbol, '1d');
+      const closes = candles.map(c => c.close);
+      const rsiValues = calculateRSI(closes, 14);
+      rsiAtOpen = rsiValues.length > 0 ? rsiValues[rsiValues.length - 1] : null;
+    } catch (e) { /* RSI optional */ }
+
+    const result = openPosition(symbol, price, rsiAtOpen, parseFloat(amount) || 100);
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/**
+ * POST /api/trade/sell - Close a simulated position
+ */
+app.post('/api/trade/sell', async (req, res) => {
+  const { symbol } = req.body;
+  if (!symbol) return res.status(400).json({ error: 'Symbol is required' });
+
+  try {
+    const { price } = await fetchCurrentPrice(symbol);
+    if (!price) return res.status(400).json({ error: 'No se pudo obtener el precio' });
+
+    let rsiAtClose = null;
+    try {
+      const { candles } = await fetchCandles(symbol, '1d');
+      const closes = candles.map(c => c.close);
+      const rsiValues = calculateRSI(closes, 14);
+      rsiAtClose = rsiValues.length > 0 ? rsiValues[rsiValues.length - 1] : null;
+    } catch (e) { /* RSI optional */ }
+
+    const result = closePosition(symbol, price, rsiAtClose);
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/**
+ * GET /api/trade/positions - Get all open positions with live PnL
+ */
+app.get('/api/trade/positions', async (req, res) => {
+  const positions = getOpenPositions();
+
+  const enriched = await Promise.all(positions.map(async (pos) => {
+    try {
+      const { price } = await fetchCurrentPrice(pos.symbol);
+      const currentValue = pos.quantity * price;
+      const pnl = currentValue - pos.amount;
+      const pnlPct = (pnl / pos.amount) * 100;
+      return { ...pos, currentPrice: price, currentValue, pnl, pnlPct };
+    } catch (e) {
+      return { ...pos, currentPrice: null, pnl: 0, pnlPct: 0, error: e.message };
+    }
+  }));
+
+  res.json(enriched);
+});
+
+/**
+ * GET /api/trade/history - Get closed trade history
+ */
+app.get('/api/trade/history', (req, res) => {
+  res.json(getHistory());
+});
+
+/**
+ * GET /api/trade/stats - Get trading simulation stats
+ */
+app.get('/api/trade/stats', (req, res) => {
+  res.json(getStats());
 });
 
 app.listen(PORT, () => {
