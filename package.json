@@ -1,0 +1,26 @@
+{
+  "name": "cryptorsi",
+  "version": "1.0.0",
+  "description": "",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node src/server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://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@github.com/GwydeonWOW/CryptoRSI.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/GwydeonWOW/CryptoRSI/issues"
+  },
+  "homepage": "https://github.com/GwydeonWOW/CryptoRSI#readme",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "node-fetch": "^2.7.0"
+  }
+}
