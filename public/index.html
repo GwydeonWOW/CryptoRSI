@@ -457,6 +457,46 @@
       font-size: 0.85rem;
     }
 
+    /* Refresh interval selector */
+    .refresh-bar {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+    }
+
+    .refresh-bar .label {
+      font-size: 0.8rem;
+      color: var(--text-dim);
+    }
+
+    .interval-btn {
+      padding: 0.3rem 0.6rem;
+      border: 1px solid var(--surface2);
+      border-radius: 4px;
+      background: transparent;
+      color: var(--text-dim);
+      cursor: pointer;
+      font-size: 0.75rem;
+      transition: all 0.2s;
+    }
+
+    .interval-btn.active {
+      background: var(--blue);
+      border-color: var(--blue);
+      color: white;
+    }
+
+    .interval-btn:hover:not(.active) {
+      border-color: var(--text-dim);
+      color: var(--text);
+    }
+
+    .interval-btn.off {
+      border-color: var(--surface2);
+      color: var(--surface2);
+    }
+
     @media (max-width: 600px) {
       .tokens-grid { grid-template-columns: 1fr; }
       .header { padding: 1rem; }
@@ -483,6 +523,18 @@
       <div class="legend-item"><div class="legend-dot" style="background:var(--red)"></div> Vender (RSI &ge; 70)</div>
     </div>
     <span class="updated" id="updatedAt"></span>
+  </div>
+
+  <div class="refresh-bar">
+    <span class="label">Auto-actualizar:</span>
+    <button class="interval-btn off" data-minutes="0" onclick="setRefreshInterval(0, this)">OFF</button>
+    <button class="interval-btn" data-minutes="1" onclick="setRefreshInterval(1, this)">1 min</button>
+    <button class="interval-btn active" data-minutes="5" onclick="setRefreshInterval(5, this)">5 min</button>
+    <button class="interval-btn" data-minutes="10" onclick="setRefreshInterval(10, this)">10 min</button>
+    <button class="interval-btn" data-minutes="15" onclick="setRefreshInterval(15, this)">15 min</button>
+    <button class="interval-btn" data-minutes="30" onclick="setRefreshInterval(30, this)">30 min</button>
+    <button class="interval-btn" data-minutes="60" onclick="setRefreshInterval(60, this)">1h</button>
+  </div>
   </div>
 
   <!-- Main Tabs -->
@@ -530,6 +582,8 @@
 const API = '';
 let allData = [];
 let openPositions = {};
+let refreshTimer = null;
+let currentIntervalMin = 5;
 
 // ============================================================
 // Helpers
@@ -955,6 +1009,33 @@ async function removeToken(symbol) {
 }
 
 // ============================================================
+// Refresh interval control
+// ============================================================
+
+function setRefreshInterval(minutes, btn) {
+  // Update button styles
+  document.querySelectorAll('.interval-btn').forEach(b => {
+    b.classList.remove('active', 'off');
+  });
+
+  if (minutes === 0) {
+    btn.classList.add('off');
+    if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
+    currentIntervalMin = 0;
+    return;
+  }
+
+  btn.classList.add('active');
+  currentIntervalMin = minutes;
+
+  // Clear existing timer
+  if (refreshTimer) clearInterval(refreshTimer);
+
+  // Set new timer
+  refreshTimer = setInterval(refreshAll, minutes * 60 * 1000);
+}
+
+// ============================================================
 // Init
 // ============================================================
 
@@ -967,7 +1048,8 @@ document.getElementById('newSymbol').addEventListener('keydown', (e) => {
 });
 
 refreshAll();
-setInterval(refreshAll, 5 * 60 * 1000);
+// Default: 5 min auto-refresh
+refreshTimer = setInterval(refreshAll, 5 * 60 * 1000);
 </script>
 
 </body>
