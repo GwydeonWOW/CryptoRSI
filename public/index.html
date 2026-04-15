@@ -39,6 +39,17 @@
       gap: 1rem;
     }
 
+    .header-inner {
+      max-width: 1200px;
+      margin: 0 auto;
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+
     .header h1 {
       font-size: 1.5rem;
       font-weight: 700;
@@ -457,6 +468,276 @@
       font-size: 0.85rem;
     }
 
+    /* Market Analysis */
+    .sentiment-card {
+      background: var(--surface);
+      border-radius: 12px;
+      padding: 1.5rem;
+      border: 1px solid var(--surface2);
+      margin-bottom: 1.5rem;
+      text-align: center;
+    }
+
+    .sentiment-score {
+      font-size: 3rem;
+      font-weight: 800;
+      margin: 0.5rem 0;
+      line-height: 1;
+    }
+
+    .sentiment-label {
+      font-size: 1.3rem;
+      font-weight: 700;
+      margin-bottom: 0.25rem;
+    }
+
+    .sentiment-action {
+      font-size: 0.85rem;
+      color: var(--text-dim);
+      max-width: 600px;
+      margin: 0.5rem auto 0;
+      line-height: 1.5;
+    }
+
+    .sentiment-bar {
+      width: 100%;
+      height: 8px;
+      background: linear-gradient(to right, #ef4444, #f97316, #eab308, #22c55e, #16a34a);
+      border-radius: 4px;
+      margin-top: 1rem;
+      position: relative;
+    }
+
+    .sentiment-marker {
+      position: absolute;
+      top: -4px;
+      width: 16px;
+      height: 16px;
+      background: white;
+      border-radius: 50%;
+      border: 3px solid var(--surface);
+      transform: translateX(-50%);
+      box-shadow: 0 0 8px rgba(0,0,0,0.4);
+    }
+
+    .market-section {
+      background: var(--surface);
+      border-radius: 12px;
+      padding: 1.25rem;
+      border: 1px solid var(--surface2);
+      margin-bottom: 1rem;
+    }
+
+    .section-title {
+      font-size: 0.95rem;
+      font-weight: 600;
+      margin-bottom: 0.25rem;
+    }
+
+    .section-desc {
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      margin-bottom: 0.75rem;
+      line-height: 1.4;
+    }
+
+    .signal-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 0.75rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .signal-card {
+      background: var(--surface);
+      border-radius: 10px;
+      padding: 1rem;
+      border: 1px solid var(--surface2);
+      border-left: 4px solid var(--gray);
+    }
+
+    .signal-card.bullish { border-left-color: var(--green); }
+    .signal-card.bearish { border-left-color: var(--red); }
+    .signal-card.neutral-bull { border-left-color: #86efac; }
+    .signal-card.neutral-bear { border-left-color: #fdba74; }
+    .signal-card.neutral { border-left-color: var(--gray); }
+
+    .signal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.5rem;
+    }
+
+    .signal-indicator {
+      font-weight: 600;
+      font-size: 0.85rem;
+    }
+
+    .signal-value {
+      font-size: 0.8rem;
+      font-weight: 500;
+      padding: 0.15rem 0.5rem;
+      border-radius: 4px;
+      background: var(--surface2);
+    }
+
+    .signal-reason {
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      line-height: 1.4;
+    }
+
+    .signal-badge {
+      font-size: 0.65rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      padding: 0.15rem 0.4rem;
+      border-radius: 3px;
+      letter-spacing: 0.03em;
+    }
+
+    .signal-badge.bullish { background: rgba(34,197,94,0.15); color: var(--green); }
+    .signal-badge.bearish { background: rgba(239,68,68,0.15); color: var(--red); }
+    .signal-badge.neutral { background: rgba(107,114,128,0.15); color: var(--gray); }
+    .signal-badge.neutral-bull { background: rgba(34,197,94,0.1); color: #86efac; }
+    .signal-badge.neutral-bear { background: rgba(249,115,22,0.1); color: #fdba74; }
+
+    /* Mini bar charts */
+    .mini-chart-container {
+      height: 120px;
+      display: flex;
+      align-items: flex-end;
+      gap: 2px;
+      padding-top: 10px;
+    }
+
+    .mini-bar {
+      flex: 1;
+      min-width: 4px;
+      border-radius: 2px 2px 0 0;
+      transition: height 0.3s;
+      position: relative;
+    }
+
+    .mini-bar:hover::after {
+      content: attr(data-value);
+      position: absolute;
+      bottom: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--bg);
+      color: var(--text);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 0.65rem;
+      white-space: nowrap;
+      border: 1px solid var(--surface2);
+    }
+
+    /* Liquidation heatmap */
+    .liq-heatmap {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      position: relative;
+      padding: 1rem 0;
+    }
+
+    .liq-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .liq-label {
+      font-size: 0.7rem;
+      color: var(--text-dim);
+      width: 35px;
+      text-align: right;
+      flex-shrink: 0;
+    }
+
+    .liq-bar-container {
+      flex: 1;
+      height: 18px;
+      position: relative;
+      background: rgba(51,65,85,0.3);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    .liq-bar-fill {
+      height: 100%;
+      border-radius: 3px;
+      transition: width 0.5s;
+      opacity: 0.8;
+    }
+
+    .liq-bar-fill.long-liq {
+      background: linear-gradient(to left, rgba(239,68,68,0.3), rgba(239,68,68,0.8));
+    }
+
+    .liq-bar-fill.short-liq {
+      background: linear-gradient(to right, rgba(34,197,94,0.3), rgba(34,197,94,0.8));
+    }
+
+    .liq-price {
+      font-size: 0.7rem;
+      color: var(--text-dim);
+      width: 80px;
+      text-align: left;
+      flex-shrink: 0;
+    }
+
+    .liq-current-line {
+      position: absolute;
+      left: 50%;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: var(--blue);
+      z-index: 2;
+    }
+
+    .liq-current-label {
+      position: absolute;
+      left: 50%;
+      top: -18px;
+      transform: translateX(-50%);
+      font-size: 0.65rem;
+      color: var(--blue);
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .liq-legend {
+      display: flex;
+      gap: 1rem;
+      margin-top: 0.5rem;
+      font-size: 0.7rem;
+      color: var(--text-dim);
+      flex-wrap: wrap;
+    }
+
+    .liq-legend-item { display: flex; align-items: center; gap: 0.3rem; }
+    .liq-dot { width: 8px; height: 8px; border-radius: 50%; }
+
+    .market-charts-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 1rem;
+    }
+
+    @media (max-width: 600px) {
+      .tokens-grid { grid-template-columns: 1fr; }
+      .header { padding: 1rem; }
+      .container { padding: 1rem; }
+      .stats-grid { grid-template-columns: repeat(2, 1fr); }
+      .market-charts-grid { grid-template-columns: 1fr; }
+      .signal-grid { grid-template-columns: 1fr; }
+    }
+
     /* Refresh interval selector */
     .refresh-bar {
       display: flex;
@@ -496,22 +777,17 @@
       border-color: var(--surface2);
       color: var(--surface2);
     }
-
-    @media (max-width: 600px) {
-      .tokens-grid { grid-template-columns: 1fr; }
-      .header { padding: 1rem; }
-      .container { padding: 1rem; }
-      .stats-grid { grid-template-columns: repeat(2, 1fr); }
-    }
   </style>
 </head>
 <body>
 
 <div class="header">
-  <h1>CryptoRSI <span>Seguimiento RSI Personal</span></h1>
-  <div class="header-actions">
-    <button class="btn btn-secondary" onclick="refreshAll()" id="refreshBtn">Actualizar</button>
-    <button class="btn btn-primary" onclick="openAddModal()">+ Añadir Token</button>
+  <div class="header-inner">
+    <h1>CryptoRSI <span>Seguimiento RSI Personal</span></h1>
+    <div class="header-actions">
+      <button class="btn btn-secondary" onclick="refreshAll()" id="refreshBtn">Actualizar</button>
+      <button class="btn btn-primary" onclick="openAddModal()">+ Añadir Token</button>
+    </div>
   </div>
 </div>
 
@@ -540,6 +816,7 @@
   <!-- Main Tabs -->
   <div class="main-tabs">
     <button class="main-tab active" onclick="switchMainTab('dashboard')">Dashboard</button>
+    <button class="main-tab" onclick="switchMainTab('market')">Analisis de Mercado</button>
     <button class="main-tab" onclick="switchMainTab('history')">Historial Trades</button>
   </div>
 
@@ -556,6 +833,57 @@
   <div id="tab-history" class="tab-content">
     <div id="statsGrid" class="stats-grid"></div>
     <div id="historyTable"></div>
+  </div>
+
+  <!-- Market Analysis Tab -->
+  <div id="tab-market" class="tab-content">
+    <div id="marketLoading" class="loading">
+      <div class="spinner"></div>
+      <p>Cargando analisis de mercado...</p>
+    </div>
+    <div id="marketContent" style="display:none">
+      <!-- Sentiment Score -->
+      <div id="sentimentCard" class="sentiment-card"></div>
+
+      <!-- Liquidation Heatmap Visual -->
+      <div id="liqHeatmapSection" class="market-section">
+        <h3 class="section-title">Mapa de Zonas de Liquidacion</h3>
+        <p class="section-desc">Zonas de precio donde se concentran liquidaciones de posiciones apalancadas. Similar al heatmap de BitcoinCounterFlow.</p>
+        <div id="liqHeatmapChart" class="liq-heatmap"></div>
+        <div class="liq-legend">
+          <span class="liq-legend-item"><span class="liq-dot" style="background:#ef4444"></span> Liquidacion de Longs (soporte)</span>
+          <span class="liq-legend-item"><span class="liq-dot" style="background:#22c55e"></span> Liquidacion de Shorts (resistencia)</span>
+          <span class="liq-legend-item"><span class="liq-dot" style="background:#3b82f6"></span> Precio actual</span>
+        </div>
+      </div>
+
+      <!-- Signal Cards Grid -->
+      <div id="signalCards" class="signal-grid"></div>
+
+      <!-- Data Charts -->
+      <div class="market-charts-grid">
+        <div class="market-section">
+          <h3 class="section-title">Funding Rate</h3>
+          <p class="section-desc">Coste de mantener posiciones en futuros. Positivo = longs pagan shorts. Negativo = shorts pagan longs.</p>
+          <div id="fundingChart" class="mini-chart-container"></div>
+        </div>
+        <div class="market-section">
+          <h3 class="section-title">Long/Short Ratio</h3>
+          <p class="section-desc">Proporcion de traders en long vs short. Mayor a 1 = mas longs.</p>
+          <div id="lsChart" class="mini-chart-container"></div>
+        </div>
+        <div class="market-section">
+          <h3 class="section-title">Open Interest</h3>
+          <p class="section-desc">Total de contratos de futuros abiertos. Sube = nuevo dinero entra. Baja = posiciones se cierran.</p>
+          <div id="oiChart" class="mini-chart-container"></div>
+        </div>
+        <div class="market-section">
+          <h3 class="section-title">Taker Buy/Sell</h3>
+          <p class="section-desc">Flujo de ordenes agresivas (market). Mayor a 1 = mas compras agresivas.</p>
+          <div id="takerChart" class="mini-chart-container"></div>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -786,6 +1114,7 @@ function switchMainTab(tab) {
   document.getElementById(`tab-${tab}`).classList.add('active');
 
   if (tab === 'history') loadHistory();
+  if (tab === 'market') loadMarketAnalysis();
 }
 
 // ============================================================
@@ -1050,6 +1379,221 @@ document.getElementById('newSymbol').addEventListener('keydown', (e) => {
 refreshAll();
 // Default: 5 min auto-refresh
 refreshTimer = setInterval(refreshAll, 5 * 60 * 1000);
+
+// ============================================================
+// Market Analysis
+// ============================================================
+
+let marketSymbol = 'BTC';
+
+async function loadMarketAnalysis() {
+  const loading = document.getElementById('marketLoading');
+  const content = document.getElementById('marketContent');
+  loading.style.display = 'block';
+  content.style.display = 'none';
+
+  try {
+    const data = await fetchJSON(`/api/market/${marketSymbol}`);
+    renderSentiment(data.sentiment);
+    renderSignalCards(data.sentiment.signals);
+    renderLiqHeatmap(data.liquidationZones, data.currentPrice);
+    renderFundingChart(data.fundingRate);
+    renderLSChart(data.longShortRatio, data.topTraderRatio);
+    renderOIChart(data.oiHistory);
+    renderTakerChart(data.takerVolume);
+    content.style.display = 'block';
+  } catch (e) {
+    content.style.display = 'block';
+    content.innerHTML = `<div class="token-error">Error al cargar datos de mercado: ${e.message}</div>`;
+  } finally {
+    loading.style.display = 'none';
+  }
+}
+
+function renderSentiment(sentiment) {
+  const pct = ((sentiment.score + 100) / 200) * 100;
+  document.getElementById('sentimentCard').innerHTML = `
+    <div style="font-size:0.8rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em">Sentimiento General del Mercado - ${marketSymbol}/USDT</div>
+    <div class="sentiment-score" style="color:${sentiment.color}">${sentiment.score >= 0 ? '+' : ''}${sentiment.score}</div>
+    <div class="sentiment-label" style="color:${sentiment.color}">${sentiment.overall}</div>
+    <div class="sentiment-action">${sentiment.action}</div>
+    <div class="sentiment-bar">
+      <div class="sentiment-marker" style="left:${pct}%"></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;font-size:0.65rem;color:var(--text-dim);margin-top:0.25rem">
+      <span>Muy Bajista (-100)</span>
+      <span>Neutral (0)</span>
+      <span>Muy Alcista (+100)</span>
+    </div>
+  `;
+}
+
+function renderSignalCards(signals) {
+  if (!signals || signals.length === 0) {
+    document.getElementById('signalCards').innerHTML = '<div class="history-empty">No hay datos suficientes</div>';
+    return;
+  }
+
+  document.getElementById('signalCards').innerHTML = signals.map(s => `
+    <div class="signal-card ${s.signal}">
+      <div class="signal-header">
+        <span class="signal-indicator">${s.indicator}</span>
+        <div style="display:flex;gap:0.4rem;align-items:center">
+          <span class="signal-value">${s.value}</span>
+          <span class="signal-badge ${s.signal}">${s.signal.replace('-', ' ')}</span>
+        </div>
+      </div>
+      <div class="signal-reason">${s.reason}</div>
+    </div>
+  `).join('');
+}
+
+function renderLiqHeatmap(liqZones, currentPrice) {
+  if (!liqZones || !currentPrice) {
+    document.getElementById('liqHeatmapChart').innerHTML = '<div class="history-empty">Datos de order book no disponibles</div>';
+    return;
+  }
+
+  // Combine all zones into price-level rows
+  const allZones = [
+    ...liqZones.longZones.map(z => ({ ...z, label: `Long ${z.leverage}x` })),
+    ...liqZones.shortZones.map(z => ({ ...z, label: `Short ${z.leverage}x` })),
+  ].sort((a, b) => a.liqPrice - b.liqPrice);
+
+  const maxVol = Math.max(...allZones.map(z => z.volume), 1);
+
+  // Calculate price range for centering
+  const minPrice = Math.min(...allZones.map(z => z.liqPrice));
+  const maxPrice = Math.max(...allZones.map(z => z.liqPrice));
+
+  // Price position relative to current price
+  const priceRange = maxPrice - minPrice || 1;
+
+  const rows = allZones.map(zone => {
+    const widthPct = Math.min((zone.volume / maxVol) * 100, 100);
+    const priceOffset = ((zone.liqPrice - currentPrice) / currentPrice) * 100;
+    const isAbove = zone.liqPrice >= currentPrice;
+    const fillClass = zone.side === 'long' ? 'long-liq' : 'short-liq';
+
+    return `
+      <div class="liq-row">
+        <span class="liq-label">${zone.label}</span>
+        <div class="liq-bar-container">
+          ${!isAbove ? `<div class="liq-bar-fill ${fillClass}" style="width:${widthPct}%;float:right"></div>` : ''}
+          ${isAbove ? `<div class="liq-bar-fill ${fillClass}" style="width:${widthPct}%"></div>` : ''}
+        </div>
+        <span class="liq-price">${formatPrice(zone.liqPrice)} <span style="color:${isAbove ? 'var(--green)' : 'var(--red)'};font-size:0.6rem">(${priceOffset >= 0 ? '+' : ''}${priceOffset.toFixed(1)}%)</span></span>
+      </div>
+    `;
+  }).join('');
+
+  document.getElementById('liqHeatmapChart').innerHTML = `
+    <div style="text-align:center;margin-bottom:0.5rem">
+      <span style="color:var(--blue);font-weight:600">Precio actual: ${formatPrice(currentPrice)}</span>
+    </div>
+    ${rows}
+  `;
+}
+
+function renderFundingChart(data) {
+  if (!data || data.length === 0) {
+    document.getElementById('fundingChart').innerHTML = '<div class="history-empty">Sin datos</div>';
+    return;
+  }
+
+  const maxAbs = Math.max(...data.map(d => Math.abs(d.rate)), 0.0001);
+  const bars = data.map(d => {
+    const h = (Math.abs(d.rate) / maxAbs) * 100;
+    const c = d.rate >= 0 ? '#ef4444' : '#22c55e';
+    return `<div class="mini-bar" style="height:${Math.max(h, 3)}%;background:${c};align-self:${d.rate >= 0 ? 'flex-end' : 'flex-start'}" data-value="${(d.rate * 100).toFixed(4)}%"></div>`;
+  }).join('');
+
+  document.getElementById('fundingChart').innerHTML = `
+    <div style="display:flex;justify-content:space-between;font-size:0.65rem;color:var(--text-dim);margin-bottom:4px">
+      <span>Hace ${data.length} periodos</span>
+      <span>Ahora</span>
+    </div>
+    <div class="mini-chart-container">${bars}</div>
+    <div style="display:flex;justify-content:space-between;font-size:0.65rem;margin-top:4px">
+      <span style="color:var(--green)">Negativo = Shorts pagan</span>
+      <span style="color:var(--red)">Positivo = Longs pagan</span>
+    </div>
+  `;
+}
+
+function renderLSChart(data, topData) {
+  if (!data || data.length === 0) {
+    document.getElementById('lsChart').innerHTML = '<div class="history-empty">Sin datos</div>';
+    return;
+  }
+
+  const bars = data.map(d => {
+    const h = (d.longs / (d.longs + d.shorts)) * 100;
+    const c = d.ratio > 1.2 ? '#22c55e' : d.ratio < 0.8 ? '#ef4444' : '#eab308';
+    return `<div class="mini-bar" style="height:${h}%;background:${c}" data-value="L:${(d.longs*100).toFixed(0)}% S:${(d.shorts*100).toFixed(0)}%"></div>`;
+  }).join('');
+
+  const topInfo = topData && topData.length > 0 ? topData[topData.length - 1] : null;
+  const topLine = topInfo ? `<div style="margin-top:6px;font-size:0.75rem">Top Traders: <span style="color:var(--green)">${(topInfo.longs*100).toFixed(0)}% Long</span> / <span style="color:var(--red)">${(topInfo.shorts*100).toFixed(0)}% Short</span> (ratio: ${topInfo.ratio.toFixed(2)})</div>` : '';
+
+  document.getElementById('lsChart').innerHTML = `
+    <div style="display:flex;justify-content:space-between;font-size:0.65rem;color:var(--text-dim);margin-bottom:4px">
+      <span>Hace ${data.length} periodos</span>
+      <span>Ahora</span>
+    </div>
+    <div class="mini-chart-container">${bars}</div>
+    ${topLine}
+  `;
+}
+
+function renderOIChart(data) {
+  if (!data || data.length === 0) {
+    document.getElementById('oiChart').innerHTML = '<div class="history-empty">Sin datos</div>';
+    return;
+  }
+
+  const maxOI = Math.max(...data.map(d => d.sumOpenInterestValue));
+  const bars = data.map(d => {
+    const h = (d.sumOpenInterestValue / maxOI) * 100;
+    return `<div class="mini-bar" style="height:${h}%;background:var(--blue)" data-value="$${(d.sumOpenInterestValue/1e6).toFixed(1)}M"></div>`;
+  }).join('');
+
+  document.getElementById('oiChart').innerHTML = `
+    <div style="display:flex;justify-content:space-between;font-size:0.65rem;color:var(--text-dim);margin-bottom:4px">
+      <span>Hace ${data.length} periodos</span>
+      <span>Ahora</span>
+    </div>
+    <div class="mini-chart-container">${bars}</div>
+    <div style="font-size:0.75rem;margin-top:4px">OI actual: <strong>$${(data[data.length-1].sumOpenInterestValue/1e6).toFixed(1)}M</strong></div>
+  `;
+}
+
+function renderTakerChart(data) {
+  if (!data || data.length === 0) {
+    document.getElementById('takerChart').innerHTML = '<div class="history-empty">Sin datos</div>';
+    return;
+  }
+
+  const maxRatio = Math.max(...data.map(d => d.ratio), 1.5);
+  const bars = data.map(d => {
+    const h = (d.ratio / maxRatio) * 100;
+    const c = d.ratio > 1 ? '#22c55e' : d.ratio < 1 ? '#ef4444' : '#eab308';
+    return `<div class="mini-bar" style="height:${h}%;background:${c}" data-value="Ratio: ${d.ratio.toFixed(2)}"></div>`;
+  }).join('');
+
+  document.getElementById('takerChart').innerHTML = `
+    <div style="display:flex;justify-content:space-between;font-size:0.65rem;color:var(--text-dim);margin-bottom:4px">
+      <span>Hace ${data.length} periodos</span>
+      <span>Ahora</span>
+    </div>
+    <div class="mini-chart-container">${bars}</div>
+    <div style="display:flex;justify-content:space-between;font-size:0.65rem;margin-top:4px">
+      <span style="color:var(--red)">Venta agresiva</span>
+      <span style="color:var(--text-dim)">1.0</span>
+      <span style="color:var(--green)">Compra agresiva</span>
+    </div>
+  `;
+}
 </script>
 
 </body>

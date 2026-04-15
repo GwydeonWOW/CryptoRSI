@@ -5,6 +5,7 @@ const { calculateRSI, getRecommendation, calculateMultiTimeframeRSI } = require(
 const { fetchCandles, fetchCurrentPrice } = require('./api');
 const { loadTokens, addToken, removeToken } = require('./config');
 const { openPosition, closePosition, getOpenPositions, getHistory, getStats } = require('./trades');
+const { getMarketAnalysis } = require('./futures');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -268,6 +269,28 @@ app.get('/api/trade/history', (req, res) => {
  */
 app.get('/api/trade/stats', (req, res) => {
   res.json(getStats());
+});
+
+// ============================================================
+// Market Analysis (Futures / Heatmap Interpretation)
+// ============================================================
+
+/**
+ * GET /api/market/:symbol - Comprehensive market analysis for a symbol
+ * Includes funding rate, OI, long/short ratio, liquidation zones, sentiment
+ */
+app.get('/api/market/:symbol', async (req, res) => {
+  const { symbol } = req.params;
+  const futuresSymbol = symbol.toUpperCase().includes('USDT')
+    ? symbol.toUpperCase()
+    : `${symbol.toUpperCase()}USDT`;
+
+  try {
+    const analysis = await getMarketAnalysis(futuresSymbol);
+    res.json(analysis);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 app.listen(PORT, () => {
