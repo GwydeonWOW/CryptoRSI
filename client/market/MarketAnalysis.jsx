@@ -65,7 +65,12 @@ export default function MarketAnalysis({ refreshTrigger }) {
     </div>
   );
 
-  if (!data) return null;
+  if (!data) return (
+    <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-dim)' }}>
+      <p style={{ fontSize: '0.9rem', marginBottom: '0.5rem' }}>Sin datos de mercado</p>
+      <p style={{ fontSize: '0.75rem' }}>Pulsa "Actualizar" para cargar los datos de Binance Futures.</p>
+    </div>
+  );
 
   return (
     <div>

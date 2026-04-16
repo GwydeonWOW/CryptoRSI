@@ -23,7 +23,12 @@ export default function TradeHistory({ refreshTrigger }) {
   }, [refreshTrigger]);
 
   if (loading) return <Loading text="Cargando historial..." />;
-  if (!stats) return <div className="token-error">Error cargando datos</div>;
+  if (!stats) return (
+    <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-dim)' }}>
+      <p style={{ fontSize: '0.9rem', marginBottom: '0.5rem' }}>Sin datos de trades</p>
+      <p style={{ fontSize: '0.75rem' }}>Pulsa "Actualizar" para cargar el historial.</p>
+    </div>
+  );
 
   return (
     <div>
