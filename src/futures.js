@@ -21,7 +21,7 @@ const CACHE_TTL = 5 * 60 * 1000; // 5 min cache for futures data
 
 function getCached(key) {
   const entry = cache.get(key);
-  if (entry && Date.now() - entry.ts < CACHE_TTL_MS) {
+  if (entry && Date.now() - entry.ts < CACHE_TTL) {
     return entry.data;
   }
   cache.delete(key);
