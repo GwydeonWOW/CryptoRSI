@@ -4,8 +4,9 @@
   "description": "",
   "main": "src/server.js",
   "scripts": {
-    "start": "node src/server.js",
-    "dev": "node src/server.js"
+    "dev": "concurrently \"node src/server.js\" \"vite\"",
+    "build": "vite build",
+    "start": "node src/server.js"
   },
   "repository": {
     "type": "git",
@@ -19,8 +20,13 @@
   },
   "homepage": "https://github.com/GwydeonWOW/CryptoRSI#readme",
   "dependencies": {
+    "@vitejs/plugin-react": "^4.7.0",
+    "concurrently": "^9.2.1",
     "cors": "^2.8.6",
     "express": "^5.2.1",
-    "node-fetch": "^2.7.0"
+    "node-fetch": "^2.7.0",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "vite": "^6.4.2"
   }
 }

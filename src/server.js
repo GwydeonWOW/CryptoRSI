@@ -18,7 +18,15 @@ const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname, '..', 'public')));
+
+// Serve React build in production, fallback to old public/ for dev
+const clientDist = path.join(__dirname, '..', 'client', 'dist');
+const publicDir = path.join(__dirname, '..', 'public');
+if (require('fs').existsSync(clientDist)) {
+  app.use(express.static(clientDist));
+} else {
+  app.use(express.static(publicDir));
+}
 
 // ============================================================
 // API Routes
@@ -326,6 +334,26 @@ app.get('/api/history/market', (req, res) => {
 app.get('/api/history/prices/:symbol', (req, res) => {
   const days = parseInt(req.query.days) || 7;
   res.json(getPriceHistory(req.params.symbol, days));
+});
+
+// ============================================================
+// SPA Fallback - serve index.html for all non-API routes
+// ============================================================
+
+app.get('/{*path}', (req, res) => {
+  if (req.path.startsWith('/api/')) {
+    return res.status(404).json({ error: 'Not found' });
+  }
+  const clientDist = path.join(__dirname, '..', 'client', 'dist');
+  const indexPath = require('fs').existsSync(clientDist)
+    ? path.join(clientDist, 'index.html')
+    : path.join(__dirname, '..', 'public', 'index.html');
+
+  if (require('fs').existsSync(indexPath)) {
+    res.sendFile(indexPath);
+  } else {
+    res.status(404).send('Not found');
+  }
 });
 
 // ============================================================
