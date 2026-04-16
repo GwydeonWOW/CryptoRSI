@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback } from 'react';
 import Header from './components/Header';
 import TabNav from './components/TabNav';
 import RefreshBar from './components/RefreshBar';
@@ -10,13 +10,11 @@ import Historicos from './historicos/Historicos';
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [refreshing, setRefreshing] = useState(false);
-  const dashboardRef = useRef(null);
 
-  const refresh = useCallback(async () => {
-    // Trigger a page reload for simplicity - components manage their own state
+  const refresh = useCallback(() => {
     setRefreshing(true);
     window.dispatchEvent(new CustomEvent('app-refresh'));
-    setTimeout(() => setRefreshing(false), 1000);
+    setTimeout(() => setRefreshing(false), 2000);
   }, []);
 
   return (
@@ -25,10 +23,18 @@ export default function App() {
       <div style={{ maxWidth: 1100, margin: '0 auto', padding: '1.5rem 2rem' }}>
         <RefreshBar onRefresh={refresh} />
         <TabNav activeTab={activeTab} onTabChange={setActiveTab} />
-        {activeTab === 'dashboard' && <Dashboard />}
-        {activeTab === 'market' && <MarketAnalysis />}
-        {activeTab === 'historicos' && <Historicos />}
-        {activeTab === 'history' && <TradeHistory />}
+        <div style={{ display: activeTab === 'dashboard' ? 'block' : 'none' }}>
+          <Dashboard />
+        </div>
+        <div style={{ display: activeTab === 'market' ? 'block' : 'none' }}>
+          <MarketAnalysis />
+        </div>
+        <div style={{ display: activeTab === 'historicos' ? 'block' : 'none' }}>
+          <Historicos />
+        </div>
+        <div style={{ display: activeTab === 'history' ? 'block' : 'none' }}>
+          <TradeHistory />
+        </div>
       </div>
     </>
   );
