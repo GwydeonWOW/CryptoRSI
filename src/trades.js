@@ -2,33 +2,18 @@
  * Trades Store - Simple JSON-based storage for simulated trades
  */
 
-const fs = require('fs');
 const path = require('path');
+const { getDataDir, ensureDataDir, readJSON, writeJSON } = require('./storage');
 
-const TRADES_PATH = path.join(__dirname, '..', 'data', 'trades.json');
-
-function ensureDataDir() {
-  const dir = path.dirname(TRADES_PATH);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-}
+const TRADES_PATH = path.join(getDataDir(), 'trades.json');
 
 function loadTrades() {
   ensureDataDir();
-  try {
-    if (fs.existsSync(TRADES_PATH)) {
-      return JSON.parse(fs.readFileSync(TRADES_PATH, 'utf8'));
-    }
-  } catch (e) {
-    console.error('Error loading trades:', e.message);
-  }
-  return { positions: [], history: [] };
+  return readJSON(TRADES_PATH, { positions: [], history: [] });
 }
 
 function saveTrades(trades) {
-  ensureDataDir();
-  fs.writeFileSync(TRADES_PATH, JSON.stringify(trades, null, 2));
+  writeJSON(TRADES_PATH, trades);
 }
 
 /**

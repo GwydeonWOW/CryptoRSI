@@ -6,6 +6,12 @@ const { fetchCandles, fetchCurrentPrice } = require('./api');
 const { loadTokens, addToken, removeToken } = require('./config');
 const { openPosition, closePosition, getOpenPositions, getHistory, getStats } = require('./trades');
 const { getMarketAnalysis } = require('./futures');
+const {
+  saveRSISnapshot, getRSIHistory,
+  saveMarketSnapshot, getMarketHistory,
+  savePriceSnapshot, getPriceHistory,
+  cleanupOldFiles, getDataDir
+} = require('./storage');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -293,6 +299,127 @@ app.get('/api/market/:symbol', async (req, res) => {
   }
 });
 
+// ============================================================
+// Historical Data Routes
+// ============================================================
+
+/**
+ * GET /api/history/rsi/:symbol - RSI history for a token (last N days)
+ */
+app.get('/api/history/rsi/:symbol', (req, res) => {
+  const days = parseInt(req.query.days) || 30;
+  const history = getRSIHistory(req.params.symbol, days);
+  res.json(history);
+});
+
+/**
+ * GET /api/history/market - Market sentiment history (last N days)
+ */
+app.get('/api/history/market', (req, res) => {
+  const days = parseInt(req.query.days) || 30;
+  res.json(getMarketHistory(days));
+});
+
+/**
+ * GET /api/history/prices/:symbol - Price history for a token (last N days)
+ */
+app.get('/api/history/prices/:symbol', (req, res) => {
+  const days = parseInt(req.query.days) || 7;
+  res.json(getPriceHistory(req.params.symbol, days));
+});
+
+// ============================================================
+// Background Data Collection Scheduler
+// Collects snapshots every 15 minutes to build historical data
+// ============================================================
+
+async function collectSnapshot() {
+  console.log(`[${new Date().toISOString()}] Collecting data snapshot...`);
+
+  try {
+    // 1) RSI snapshot for all tracked tokens
+    const tokens = loadTokens();
+    const timeframes = ['1h', '4h', '1d'];
+
+    const rsiResults = await Promise.allSettled(
+      tokens.map(async (token) => {
+        try {
+          const candlesByTimeframe = {};
+          const fetches = timeframes.map(async tf => {
+            try {
+              const { candles } = await fetchCandles(token.symbol, tf);
+              return { tf, closes: candles.map(c => c.close) };
+            } catch (e) {
+              return { tf, closes: [] };
+            }
+          });
+          const results = await Promise.all(fetches);
+          for (const r of results) {
+            if (r.closes.length > 0) candlesByTimeframe[r.tf] = r.closes;
+          }
+
+          const rsiData = calculateMultiTimeframeRSI(candlesByTimeframe, 14);
+          const { price } = await fetchCurrentPrice(token.symbol);
+          const primaryTF = rsiData['1d']?.rsi !== null ? '1d'
+            : rsiData['4h']?.rsi !== null ? '4h' : '1h';
+          const primaryRSI = rsiData[primaryTF]?.rsi || null;
+          const recommendation = primaryRSI !== null ? getRecommendation(primaryRSI) : null;
+
+          return {
+            symbol: token.symbol,
+            name: token.name,
+            price,
+            primaryRSI,
+            recommendation,
+            timeframes: rsiData,
+          };
+        } catch (e) {
+          return { symbol: token.symbol, error: e.message };
+        }
+      })
+    );
+
+    const rsiDataArray = rsiResults
+      .filter(r => r.status === 'fulfilled' && !r.value.error)
+      .map(r => r.value);
+
+    if (rsiDataArray.length > 0) {
+      saveRSISnapshot(rsiDataArray);
+      console.log(`  RSI snapshot saved: ${rsiDataArray.length} tokens`);
+
+      // Save price snapshot
+      const prices = rsiDataArray.map(t => ({ symbol: t.symbol, price: t.price }));
+      savePriceSnapshot(prices);
+    }
+
+    // 2) Market sentiment snapshot (BTC only to avoid rate limits)
+    try {
+      const marketData = await getMarketAnalysis('BTCUSDT');
+      saveMarketSnapshot(marketData);
+      console.log('  Market snapshot saved');
+    } catch (e) {
+      console.log(`  Market snapshot failed: ${e.message}`);
+    }
+
+  } catch (e) {
+    console.error('Snapshot collection error:', e.message);
+  }
+}
+
+// Schedule collection every 15 minutes
+const SNAPSHOT_INTERVAL_MS = 15 * 60 * 1000;
+
 app.listen(PORT, () => {
   console.log(`CryptoRSI server running on http://localhost:${PORT}`);
+  console.log(`Data directory: ${getDataDir()}`);
+
+  // Collect initial snapshot after 30s (let server warm up)
+  setTimeout(collectSnapshot, 30000);
+
+  // Schedule periodic collection
+  setInterval(collectSnapshot, SNAPSHOT_INTERVAL_MS);
+
+  // Cleanup old files daily
+  cleanupOldFiles(90);
+  setInterval(() => cleanupOldFiles(90), 24 * 60 * 60 * 1000);
 });

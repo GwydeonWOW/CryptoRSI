@@ -3,10 +3,10 @@
  * Simple JSON file-based storage for tracked tokens
  */
 
-const fs = require('fs');
 const path = require('path');
+const { getDataDir, ensureDataDir, readJSON, writeJSON } = require('./storage');
 
-const CONFIG_PATH = path.join(__dirname, '..', 'data', 'tokens.json');
+const CONFIG_PATH = path.join(getDataDir(), 'tokens.json');
 
 const DEFAULT_TOKENS = [
   { symbol: 'BTC', name: 'Bitcoin' },
@@ -16,29 +16,16 @@ const DEFAULT_TOKENS = [
   { symbol: 'ADA', name: 'Cardano' }
 ];
 
-function ensureDataDir() {
-  const dir = path.dirname(CONFIG_PATH);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-}
-
 function loadTokens() {
   ensureDataDir();
-  try {
-    if (fs.existsSync(CONFIG_PATH)) {
-      return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
-    }
-  } catch (e) {
-    console.error('Error loading tokens:', e.message);
-  }
+  const tokens = readJSON(CONFIG_PATH, null);
+  if (tokens) return tokens;
   saveTokens(DEFAULT_TOKENS);
   return DEFAULT_TOKENS;
 }
 
 function saveTokens(tokens) {
-  ensureDataDir();
-  fs.writeFileSync(CONFIG_PATH, JSON.stringify(tokens, null, 2));
+  writeJSON(CONFIG_PATH, tokens);
 }
 
 function addToken(symbol, name) {
@@ -64,4 +51,4 @@ function removeToken(symbol) {
   return { success: true, message: `${upper} eliminado correctamente` };
 }
 
-module.exports = { loadTokens, addToken, removeToken };
+module.exports = { loadTokens, addToken, removeToken, CONFIG_PATH };
