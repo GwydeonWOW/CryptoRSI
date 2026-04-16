@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { useAPI } from '../hooks/useAPI';
 import Loading from '../components/Loading';
 import SentimentCard from './SentimentCard';
 import SignalCards from './SignalCards';
@@ -17,11 +16,25 @@ export default function MarketAnalysis() {
   async function load() {
     setLoading(true);
     setError(null);
+    setData(null);
     try {
-      const result = await useAPI('/api/market/BTC');
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 30000);
+
+      const res = await fetch('/api/market/BTC', { signal: controller.signal });
+      clearTimeout(timeout);
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+      const result = await res.json();
+      if (result.error) throw new Error(result.error);
+
       setData(result);
     } catch (e) {
-      setError(e.message);
+      if (e.name === 'AbortError') {
+        setError('La peticion tardo demasiado (30s). Intentalo de nuevo.');
+      } else {
+        setError(e.message);
+      }
     } finally {
       setLoading(false);
     }
@@ -29,15 +42,30 @@ export default function MarketAnalysis() {
 
   useEffect(() => { load(); }, []);
 
-  if (loading) return <Loading text="Cargando analisis de mercado..." />;
-
-  if (error) return (
-    <div className="token-error" style={{ padding: '2rem', textAlign: 'center' }}>
-      <p style={{ fontSize: '1rem', marginBottom: '0.5rem' }}>Error al cargar datos de mercado</p>
-      <p style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>{error}</p>
-      <button className="btn btn-primary" style={{ marginTop: '1rem' }} onClick={load}>Reintentar</button>
+  if (loading) return (
+    <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-dim)' }}>
+      <div style={{
+        display: 'inline-block', width: '2rem', height: '2rem',
+        border: '3px solid var(--surface2)', borderTopColor: 'var(--blue)',
+        borderRadius: '50%', animation: 'spin 0.8s linear infinite', marginBottom: '1rem'
+      }} />
+      <p>Cargando analisis de mercado...</p>
+      <p style={{ fontSize: '0.75rem', marginTop: '0.5rem' }}>
+        Obteniendo datos de Binance Futures (funding rate, open interest, long/short ratio...)
+      </p>
+      <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
     </div>
   );
+
+  if (error) return (
+    <div style={{ padding: '2rem', textAlign: 'center' }}>
+      <p style={{ fontSize: '1rem', marginBottom: '0.5rem', color: 'var(--red)' }}>Error al cargar datos de mercado</p>
+      <p style={{ fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: '1rem' }}>{error}</p>
+      <button className="btn btn-primary" onClick={load}>Reintentar</button>
+    </div>
+  );
+
+  if (!data) return null;
 
   return (
     <div>
