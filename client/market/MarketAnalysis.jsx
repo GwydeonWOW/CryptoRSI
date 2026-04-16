@@ -8,10 +8,10 @@ import LongShortChart from './LongShortChart';
 import OpenInterestChart from './OpenInterestChart';
 import TakerVolumeChart from './TakerVolumeChart';
 
-export default function MarketAnalysis() {
+export default function MarketAnalysis({ refreshTrigger }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -40,7 +40,7 @@ export default function MarketAnalysis() {
     }
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { if (refreshTrigger > 0) load(); }, [refreshTrigger]);
 
   if (loading) return (
     <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-dim)' }}>

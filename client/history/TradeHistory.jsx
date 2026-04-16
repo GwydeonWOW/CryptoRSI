@@ -3,13 +3,15 @@ import { useAPI } from '../hooks/useAPI';
 import Loading from '../components/Loading';
 import { formatPrice } from '../dashboard/TokenCard';
 
-export default function TradeHistory() {
+export default function TradeHistory({ refreshTrigger }) {
   const [stats, setStats] = useState(null);
   const [history, setHistory] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
+    if (refreshTrigger <= 0) return;
     async function load() {
+      setLoading(true);
       try {
         const [s, h] = await Promise.all([useAPI('/api/trade/stats'), useAPI('/api/trade/history')]);
         setStats(s);
@@ -18,7 +20,7 @@ export default function TradeHistory() {
       finally { setLoading(false); }
     }
     load();
-  }, []);
+  }, [refreshTrigger]);
 
   if (loading) return <Loading text="Cargando historial..." />;
   if (!stats) return <div className="token-error">Error cargando datos</div>;

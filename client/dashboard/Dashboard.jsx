@@ -4,10 +4,10 @@ import TokenCard from './TokenCard';
 import AddTokenModal from './AddTokenModal';
 import Loading from '../components/Loading';
 
-export default function Dashboard() {
+export default function Dashboard({ refreshTrigger }) {
   const [tokens, setTokens] = useState([]);
   const [positions, setPositions] = useState({});
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
 
   const refresh = useCallback(async () => {
@@ -28,7 +28,7 @@ export default function Dashboard() {
     }
   }, []);
 
-  useEffect(() => { refresh(); }, [refresh]);
+  useEffect(() => { if (refreshTrigger > 0) refresh(); }, [refreshTrigger]);
 
   return (
     <div>

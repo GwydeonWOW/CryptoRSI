@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAPI } from '../hooks/useAPI';
 import Loading from '../components/Loading';
 
-export default function Historicos() {
+export default function Historicos({ refreshTrigger }) {
   const [tokens, setTokens] = useState([]);
   const [symbol, setSymbol] = useState('BTC');
   const [days, setDays] = useState(30);
@@ -12,8 +12,9 @@ export default function Historicos() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
+    if (refreshTrigger <= 0) return;
     useAPI('/api/tokens').then(t => { setTokens(t); if (t.length > 0) setSymbol(t[0].symbol); }).catch(() => {});
-  }, []);
+  }, [refreshTrigger]);
 
   async function loadData() {
     setLoading(true);

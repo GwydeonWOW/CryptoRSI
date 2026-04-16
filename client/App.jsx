@@ -10,12 +10,20 @@ import Historicos from './historicos/Historicos';
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [refreshing, setRefreshing] = useState(false);
+  // Per-tab refresh triggers: dashboard starts at 1 for initial load, others at 0 (no fetch)
+  const [triggers, setTriggers] = useState({
+    dashboard: 1,
+    market: 0,
+    historicos: 0,
+    history: 0,
+  });
 
   const refresh = useCallback(() => {
     setRefreshing(true);
-    window.dispatchEvent(new CustomEvent('app-refresh'));
+    // Only refresh the currently active tab
+    setTriggers(prev => ({ ...prev, [activeTab]: prev[activeTab] + 1 }));
     setTimeout(() => setRefreshing(false), 2000);
-  }, []);
+  }, [activeTab]);
 
   return (
     <>
@@ -24,16 +32,16 @@ export default function App() {
         <RefreshBar onRefresh={refresh} />
         <TabNav activeTab={activeTab} onTabChange={setActiveTab} />
         <div style={{ display: activeTab === 'dashboard' ? 'block' : 'none' }}>
-          <Dashboard />
+          <Dashboard refreshTrigger={triggers.dashboard} />
         </div>
         <div style={{ display: activeTab === 'market' ? 'block' : 'none' }}>
-          <MarketAnalysis />
+          <MarketAnalysis refreshTrigger={triggers.market} />
         </div>
         <div style={{ display: activeTab === 'historicos' ? 'block' : 'none' }}>
-          <Historicos />
+          <Historicos refreshTrigger={triggers.historicos} />
         </div>
         <div style={{ display: activeTab === 'history' ? 'block' : 'none' }}>
-          <TradeHistory />
+          <TradeHistory refreshTrigger={triggers.history} />
         </div>
       </div>
     </>
