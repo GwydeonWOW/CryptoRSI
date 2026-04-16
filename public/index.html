@@ -1526,20 +1526,30 @@ async function loadMarketAnalysis() {
   content.style.display = 'none';
 
   try {
-    const data = await fetchJSON(`/api/market/${marketSymbol}`);
+    const res = await fetch(`/api/market/${marketSymbol}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+    const data = await res.json();
+
+    if (data.error) throw new Error(data.error);
+
     renderSentiment(data.sentiment);
-    renderSignalCards(data.sentiment.signals);
+    renderSignalCards(data.sentiment?.signals);
     renderLiqHeatmap(data.liquidationZones, data.currentPrice);
     renderFundingChart(data.fundingRate);
     renderLSChart(data.longShortRatio, data.topTraderRatio);
     renderOIChart(data.oiHistory);
     renderTakerChart(data.takerVolume);
+    loading.style.display = 'none';
     content.style.display = 'block';
   } catch (e) {
-    content.style.display = 'block';
-    content.innerHTML = `<div class="token-error">Error al cargar datos de mercado: ${e.message}</div>`;
-  } finally {
     loading.style.display = 'none';
+    content.style.display = 'block';
+    content.innerHTML = `
+      <div class="token-error" style="padding:2rem;text-align:center">
+        <p style="font-size:1rem;margin-bottom:0.5rem">Error al cargar datos de mercado</p>
+        <p style="font-size:0.8rem;color:var(--text-dim)">${e.message}</p>
+        <button class="btn btn-primary" style="margin-top:1rem" onclick="loadMarketAnalysis()">Reintentar</button>
+      </div>`;
   }
 }
 
