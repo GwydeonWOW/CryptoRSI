@@ -6,6 +6,8 @@ const { fetchCandles, fetchCurrentPrice } = require('./api');
 const { loadTokens, addToken, removeToken } = require('./config');
 const { openPosition, closePosition, getOpenPositions, getHistory, getStats } = require('./trades');
 const { getMarketAnalysis } = require('./futures');
+const { authMiddleware, adminMiddleware, generateToken, verifyPassword } = require('./auth');
+const { ensureAdmin, listUsers, getUserByUsername, createUser, deleteUser, updateUser } = require('./users');
 const {
   saveRSISnapshot, getRSIHistory,
   saveMarketSnapshot, getMarketHistory,
@@ -40,9 +42,9 @@ app.get('/api/tokens', (req, res) => {
 });
 
 /**
- * POST /api/tokens - Add a token to track
+ * POST /api/tokens - Add a token to track (admin only)
  */
-app.post('/api/tokens', (req, res) => {
+app.post('/api/tokens', authMiddleware, adminMiddleware, (req, res) => {
   const { symbol, name } = req.body;
   if (!symbol) return res.status(400).json({ error: 'Symbol is required' });
   const result = addToken(symbol, name);
@@ -50,9 +52,9 @@ app.post('/api/tokens', (req, res) => {
 });
 
 /**
- * DELETE /api/tokens/:symbol - Remove a tracked token
+ * DELETE /api/tokens/:symbol - Remove a tracked token (admin only)
  */
-app.delete('/api/tokens/:symbol', (req, res) => {
+app.delete('/api/tokens/:symbol', authMiddleware, adminMiddleware, (req, res) => {
   const result = removeToken(req.params.symbol);
   res.json(result);
 });
@@ -194,13 +196,84 @@ app.get('/api/rsi', async (req, res) => {
 });
 
 // ============================================================
-// Trading Simulation Routes
+// Auth Routes
+// ============================================================
+
+/**
+ * POST /api/auth/login - Login
+ */
+app.post('/api/auth/login', async (req, res) => {
+  const { username, password } = req.body;
+  if (!username || !password) {
+    return res.status(400).json({ error: 'Username y contrasena requeridos' });
+  }
+
+  const user = getUserByUsername(username);
+  if (!user) {
+    return res.status(401).json({ error: 'Usuario o contrasena incorrectos' });
+  }
+
+  const valid = await verifyPassword(password, user.password);
+  if (!valid) {
+    return res.status(401).json({ error: 'Usuario o contrasena incorrectos' });
+  }
+
+  const token = generateToken(user);
+  const { password: _, ...safeUser } = user;
+  res.json({ token, user: safeUser });
+});
+
+/**
+ * GET /api/auth/me - Get current user
+ */
+app.get('/api/auth/me', authMiddleware, (req, res) => {
+  const user = getUserByUsername(req.user.username);
+  if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
+  const { password: _, ...safeUser } = user;
+  res.json(safeUser);
+});
+
+/**
+ * PUT /api/auth/me - Update own profile
+ */
+app.put('/api/auth/me', authMiddleware, async (req, res) => {
+  const result = await updateUser(req.user.id, req.body);
+  if (result.error) return res.status(400).json(result);
+  res.json(result);
+});
+
+// ============================================================
+// User Management Routes (admin only)
+// ============================================================
+
+app.get('/api/users', authMiddleware, adminMiddleware, (req, res) => {
+  res.json(listUsers());
+});
+
+app.post('/api/users', authMiddleware, adminMiddleware, async (req, res) => {
+  const { username, password, displayName, role } = req.body;
+  const result = await createUser(username, password, displayName, role);
+  if (result.error) return res.status(400).json(result);
+  res.json(result);
+});
+
+app.delete('/api/users/:id', authMiddleware, adminMiddleware, (req, res) => {
+  if (req.params.id === req.user.id) {
+    return res.status(400).json({ error: 'No puedes eliminar tu propio usuario' });
+  }
+  const result = deleteUser(req.params.id);
+  if (result.error) return res.status(400).json(result);
+  res.json(result);
+});
+
+// ============================================================
+// Trading Simulation Routes (require auth)
 // ============================================================
 
 /**
  * POST /api/trade/buy - Open a simulated position
  */
-app.post('/api/trade/buy', async (req, res) => {
+app.post('/api/trade/buy', authMiddleware, async (req, res) => {
   const { symbol, amount } = req.body;
   if (!symbol) return res.status(400).json({ error: 'Symbol is required' });
 
@@ -208,7 +281,6 @@ app.post('/api/trade/buy', async (req, res) => {
     const { price } = await fetchCurrentPrice(symbol);
     if (!price) return res.status(400).json({ error: 'No se pudo obtener el precio' });
 
-    // Get current RSI
     let rsiAtOpen = null;
     try {
       const { candles } = await fetchCandles(symbol, '1d');
@@ -217,7 +289,7 @@ app.post('/api/trade/buy', async (req, res) => {
       rsiAtOpen = rsiValues.length > 0 ? rsiValues[rsiValues.length - 1] : null;
     } catch (e) { /* RSI optional */ }
 
-    const result = openPosition(symbol, price, rsiAtOpen, parseFloat(amount) || 100);
+    const result = openPosition(req.user.id, symbol, price, rsiAtOpen, parseFloat(amount) || 100);
     res.json(result);
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -227,7 +299,7 @@ app.post('/api/trade/buy', async (req, res) => {
 /**
  * POST /api/trade/sell - Close a simulated position
  */
-app.post('/api/trade/sell', async (req, res) => {
+app.post('/api/trade/sell', authMiddleware, async (req, res) => {
   const { symbol } = req.body;
   if (!symbol) return res.status(400).json({ error: 'Symbol is required' });
 
@@ -243,7 +315,7 @@ app.post('/api/trade/sell', async (req, res) => {
       rsiAtClose = rsiValues.length > 0 ? rsiValues[rsiValues.length - 1] : null;
     } catch (e) { /* RSI optional */ }
 
-    const result = closePosition(symbol, price, rsiAtClose);
+    const result = closePosition(req.user.id, symbol, price, rsiAtClose);
     res.json(result);
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -251,10 +323,10 @@ app.post('/api/trade/sell', async (req, res) => {
 });
 
 /**
- * GET /api/trade/positions - Get all open positions with live PnL
+ * GET /api/trade/positions - Get open positions with live PnL
  */
-app.get('/api/trade/positions', async (req, res) => {
-  const positions = getOpenPositions();
+app.get('/api/trade/positions', authMiddleware, async (req, res) => {
+  const positions = getOpenPositions(req.user.id);
 
   const enriched = await Promise.all(positions.map(async (pos) => {
     try {
@@ -274,15 +346,15 @@ app.get('/api/trade/positions', async (req, res) => {
 /**
  * GET /api/trade/history - Get closed trade history
  */
-app.get('/api/trade/history', (req, res) => {
-  res.json(getHistory());
+app.get('/api/trade/history', authMiddleware, (req, res) => {
+  res.json(getHistory(req.user.id));
 });
 
 /**
  * GET /api/trade/stats - Get trading simulation stats
  */
-app.get('/api/trade/stats', (req, res) => {
-  res.json(getStats());
+app.get('/api/trade/stats', authMiddleware, (req, res) => {
+  res.json(getStats(req.user.id));
 });
 
 // ============================================================
@@ -437,9 +509,12 @@ async function collectSnapshot() {
 // Schedule collection every 15 minutes
 const SNAPSHOT_INTERVAL_MS = 15 * 60 * 1000;
 
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`CryptoRSI server running on http://localhost:${PORT}`);
   console.log(`Data directory: ${getDataDir()}`);
+
+  // Ensure default admin user exists
+  await ensureAdmin();
 
   // Collect initial snapshot after 30s (let server warm up)
   setTimeout(collectSnapshot, 30000);

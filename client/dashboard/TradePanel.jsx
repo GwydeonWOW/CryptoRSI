@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { formatPrice } from './TokenCard';
+import { getAuthHeaders } from '../hooks/useAPI';
 
 export default function TradePanel({ symbol, position, onTrade }) {
   const [amount, setAmount] = useState(100);
@@ -10,7 +11,7 @@ export default function TradePanel({ symbol, position, onTrade }) {
     try {
       const res = await fetch('/api/trade/buy', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ symbol, amount }),
       });
       const data = await res.json();
@@ -21,12 +22,12 @@ export default function TradePanel({ symbol, position, onTrade }) {
   }
 
   async function sell() {
-    if (!confirm(`¿Vender posición de ${symbol}?`)) return;
+    if (!confirm(`Vender posicion de ${symbol}?`)) return;
     setLoading(true);
     try {
       const res = await fetch('/api/trade/sell', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ symbol }),
       });
       const data = await res.json();

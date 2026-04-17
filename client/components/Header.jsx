@@ -1,4 +1,4 @@
-export default function Header({ onRefresh, refreshing, lastUpdated }) {
+export default function Header({ onRefresh, refreshing, lastUpdated, user, onLogout }) {
   return (
     <header style={{
       background: 'var(--surface)',
@@ -26,6 +26,18 @@ export default function Header({ onRefresh, refreshing, lastUpdated }) {
           <button className="btn btn-secondary" onClick={onRefresh} disabled={refreshing}>
             {refreshing ? 'Actualizando...' : 'Actualizar'}
           </button>
+          {user && (
+            <>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-dim)', padding: '0 0.3rem' }}>
+                {user.displayName || user.username}
+                {user.role === 'admin' && <span style={{ color: 'var(--blue)', marginLeft: 4, fontSize: '0.7rem' }}>Admin</span>}
+              </span>
+              <button className="btn btn-sm" onClick={onLogout}
+                style={{ color: 'var(--text-dim)', background: 'rgba(148,163,184,0.1)' }}>
+                Salir
+              </button>
+            </>
+          )}
         </div>
       </div>
     </header>

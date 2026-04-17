@@ -1,32 +1,51 @@
 /**
- * Trades Store - Simple JSON-based storage for simulated trades
+ * Trades Store - User-isolated JSON-based storage for simulated trades
  */
 
+const fs = require('fs');
 const path = require('path');
 const { getDataDir, ensureDataDir, readJSON, writeJSON } = require('./storage');
 
-const TRADES_PATH = path.join(getDataDir(), 'trades.json');
+const ADMIN_ID = 'admin_001';
 
-function loadTrades() {
+/**
+ * Get trades file path for a specific user.
+ * Migrates legacy trades.json -> trades_admin_001.json on first access.
+ */
+function getTradesPath(userId) {
   ensureDataDir();
-  return readJSON(TRADES_PATH, { positions: [], history: [] });
+  const userPath = path.join(getDataDir(), `trades_${userId}.json`);
+
+  // Migration: legacy trades.json -> trades_admin_001.json
+  if (userId === ADMIN_ID && !fs.existsSync(userPath)) {
+    const legacyPath = path.join(getDataDir(), 'trades.json');
+    if (fs.existsSync(legacyPath)) {
+      fs.renameSync(legacyPath, userPath);
+      console.log('Migrated legacy trades.json -> trades_admin_001.json');
+    }
+  }
+
+  return userPath;
 }
 
-function saveTrades(trades) {
-  writeJSON(TRADES_PATH, trades);
+function loadTrades(userId) {
+  return readJSON(getTradesPath(userId), { positions: [], history: [] });
+}
+
+function saveTrades(userId, trades) {
+  writeJSON(getTradesPath(userId), trades);
 }
 
 /**
  * Open a simulated position (buy)
  */
-function openPosition(symbol, price, rsiAtOpen, amount = 100) {
-  const trades = loadTrades();
+function openPosition(userId, symbol, price, rsiAtOpen, amount = 100) {
+  const trades = loadTrades(userId);
   const upper = symbol.toUpperCase();
 
-  // Check if there's already an open position for this symbol
   const existing = trades.positions.find(p => p.symbol === upper);
   if (existing) {
-    return { success: false, message: `Ya tienes una posición abierta en ${upper}` };
+    return { success: false, message: `Ya tienes una posicion abierta en ${upper}` };
   }
 
   const position = {
@@ -36,24 +55,24 @@ function openPosition(symbol, price, rsiAtOpen, amount = 100) {
     rsiAtOpen,
     amount,
     quantity: amount / price,
-    openedAt: new Date().toISOString()
+    openedAt: new Date().toISOString(),
   };
 
   trades.positions.push(position);
-  saveTrades(trades);
+  saveTrades(userId, trades);
   return { success: true, position };
 }
 
 /**
  * Close a simulated position (sell)
  */
-function closePosition(symbol, currentPrice, rsiAtClose) {
-  const trades = loadTrades();
+function closePosition(userId, symbol, currentPrice, rsiAtClose) {
+  const trades = loadTrades(userId);
   const upper = symbol.toUpperCase();
 
   const idx = trades.positions.findIndex(p => p.symbol === upper);
   if (idx === -1) {
-    return { success: false, message: `No hay posición abierta en ${upper}` };
+    return { success: false, message: `No hay posicion abierta en ${upper}` };
   }
 
   const position = trades.positions[idx];
@@ -68,48 +87,31 @@ function closePosition(symbol, currentPrice, rsiAtClose) {
     exitValue,
     pnl,
     pnlPct,
-    closedAt: new Date().toISOString()
+    closedAt: new Date().toISOString(),
   };
 
-  // Move to history
   trades.history.push(closedTrade);
   trades.positions.splice(idx, 1);
-  saveTrades(trades);
+  saveTrades(userId, trades);
 
   return { success: true, trade: closedTrade };
 }
 
-/**
- * Get all open positions enriched with current prices
- */
-function getOpenPositions() {
-  return loadTrades().positions;
+function getOpenPositions(userId) {
+  return loadTrades(userId).positions;
 }
 
-/**
- * Get trade history
- */
-function getHistory() {
-  return loadTrades().history;
+function getHistory(userId) {
+  return loadTrades(userId).history;
 }
 
-/**
- * Get stats summary
- */
-function getStats() {
-  const trades = loadTrades();
-  const history = trades.history;
+function getStats(userId) {
+  const history = loadTrades(userId).history;
 
   if (history.length === 0) {
     return {
-      totalTrades: 0,
-      wins: 0,
-      losses: 0,
-      winRate: 0,
-      totalPnl: 0,
-      avgPnlPct: 0,
-      bestTrade: null,
-      worstTrade: null
+      totalTrades: 0, wins: 0, losses: 0, winRate: 0,
+      totalPnl: 0, avgPnlPct: 0, bestTrade: null, worstTrade: null,
     };
   }
 
@@ -117,7 +119,6 @@ function getStats() {
   const losses = history.filter(t => t.pnl <= 0);
   const totalPnl = history.reduce((s, t) => s + t.pnl, 0);
   const avgPnlPct = history.reduce((s, t) => s + t.pnlPct, 0) / history.length;
-
   const sorted = [...history].sort((a, b) => b.pnl - a.pnl);
 
   return {
@@ -128,7 +129,7 @@ function getStats() {
     totalPnl,
     avgPnlPct,
     bestTrade: sorted[0],
-    worstTrade: sorted[sorted.length - 1]
+    worstTrade: sorted[sorted.length - 1],
   };
 }
 

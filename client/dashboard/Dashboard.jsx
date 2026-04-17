@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useAPI } from '../hooks/useAPI';
+import { useAPI, useAuthAPI } from '../hooks/useAPI';
 import TokenCard from './TokenCard';
 import AddTokenModal from './AddTokenModal';
 import Loading from '../components/Loading';
@@ -15,7 +15,7 @@ export default function Dashboard({ refreshTrigger }) {
     try {
       const [rsiData, posData] = await Promise.all([
         useAPI('/api/rsi'),
-        useAPI('/api/trade/positions'),
+        useAuthAPI('/api/trade/positions'),
       ]);
       setTokens(rsiData);
       const posMap = {};
@@ -38,7 +38,7 @@ export default function Dashboard({ refreshTrigger }) {
           <span><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: 'var(--yellow)', marginRight: 4 }}></span>Esperar</span>
           <span><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: 'var(--red)', marginRight: 4 }}></span>Vender (RSI ≥ 70)</span>
         </div>
-        <button className="btn btn-primary btn-sm" onClick={() => setShowAddModal(true)}>+ Añadir Token</button>
+        <button className="btn btn-primary btn-sm" onClick={() => setShowAddModal(true)}>+ Anadir Token</button>
       </div>
 
       {loading && tokens.length === 0 ? <Loading text="Cargando datos RSI..." /> : (

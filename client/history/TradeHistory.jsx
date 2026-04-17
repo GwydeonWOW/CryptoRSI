@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useAPI } from '../hooks/useAPI';
+import { useAuthAPI } from '../hooks/useAPI';
 import Loading from '../components/Loading';
 import { formatPrice } from '../dashboard/TokenCard';
 
@@ -13,7 +13,7 @@ export default function TradeHistory({ refreshTrigger }) {
     async function load() {
       setLoading(true);
       try {
-        const [s, h] = await Promise.all([useAPI('/api/trade/stats'), useAPI('/api/trade/history')]);
+        const [s, h] = await Promise.all([useAuthAPI('/api/trade/stats'), useAuthAPI('/api/trade/history')]);
         setStats(s);
         setHistory(h);
       } catch (e) { console.error(e); }

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { getAuthHeaders } from '../hooks/useAPI';
 
 export default function AddTokenModal({ open, onClose, onAdded }) {
   const [symbol, setSymbol] = useState('');
@@ -7,11 +8,11 @@ export default function AddTokenModal({ open, onClose, onAdded }) {
   if (!open) return null;
 
   async function add() {
-    if (!symbol.trim()) { alert('Introduce un símbolo'); return; }
+    if (!symbol.trim()) { alert('Introduce un simbolo'); return; }
     try {
       const res = await fetch('/api/tokens', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ symbol: symbol.trim(), name: name.trim() }),
       });
       const data = await res.json();
