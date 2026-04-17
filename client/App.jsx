@@ -7,11 +7,13 @@ import MarketAnalysis from './market/MarketAnalysis';
 import TradeHistory from './history/TradeHistory';
 import Historicos from './historicos/Historicos';
 import UserPanel from './auth/UserPanel';
+import ProfileModal from './auth/ProfileModal';
 import Login from './auth/Login';
 
 export default function App() {
   const [user, setUser] = useState(null);
   const [authReady, setAuthReady] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
 
   // Restore session from localStorage
   useEffect(() => {
@@ -70,7 +72,7 @@ export default function App() {
 
   return (
     <>
-      <Header onRefresh={refresh} refreshing={refreshing} lastUpdated={lastUpdated} user={user} onLogout={handleLogout} />
+      <Header onRefresh={refresh} refreshing={refreshing} lastUpdated={lastUpdated} user={user} onLogout={handleLogout} onProfile={() => setShowProfile(true)} />
       <div style={{ maxWidth: 1100, margin: '0 auto', padding: '1.5rem 2rem' }}>
         <RefreshBar onRefresh={refresh} />
         <TabNav activeTab={activeTab} onTabChange={handleTabChange} isAdmin={isAdmin} />
@@ -92,6 +94,9 @@ export default function App() {
           </div>
         )}
       </div>
+      {showProfile && (
+        <ProfileModal user={user} onClose={() => setShowProfile(false)} onUpdated={setUser} />
+      )}
     </>
   );
 }
