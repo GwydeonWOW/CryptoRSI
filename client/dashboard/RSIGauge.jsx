@@ -1,4 +1,4 @@
-export default function RSIGauge({ rsi }) {
+export default function RSIGauge({ rsi, timeframe }) {
   if (rsi === null || rsi === undefined) return <span style={{ color: 'var(--text-dim)' }}>N/A</span>;
 
   const color = getRSIArcColor(rsi);
@@ -16,9 +16,16 @@ export default function RSIGauge({ rsi }) {
       </svg>
       <div style={{
         position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
-        fontSize: '1.1rem', fontWeight: 700, color: getRSIColor(rsi),
+        textAlign: 'center',
       }}>
-        {rsi.toFixed(1)}
+        <div style={{ fontSize: '1.1rem', fontWeight: 700, color: getRSIColor(rsi) }}>
+          {rsi.toFixed(1)}
+        </div>
+        {timeframe && (
+          <div style={{ fontSize: '0.55rem', color: 'var(--text-dim)', marginTop: -2 }}>
+            {timeframe}
+          </div>
+        )}
       </div>
     </div>
   );

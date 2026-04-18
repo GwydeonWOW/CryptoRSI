@@ -95,33 +95,34 @@ app.get('/api/rsi/:symbol', async (req, res) => {
     // Get current price
     const { price, source: priceSource } = await fetchCurrentPrice(symbol);
 
-    // Determine overall recommendation (weighted by timeframe importance)
-    const weights = { '1d': 3, '4h': 2, '1h': 1 };
-    let buyScore = 0, sellScore = 0, totalWeight = 0;
+    // Primary RSI: use shortest available timeframe for most current reading
+    const primaryTF = rsiData['1h']?.rsi !== null ? '1h'
+      : rsiData['4h']?.rsi !== null ? '4h' : '1d';
+    const primaryRSI = rsiData[primaryTF]?.rsi || null;
+    const primaryDivergence = rsiData[primaryTF]?.divergence || null;
 
-    for (const [tf, data] of Object.entries(rsiData)) {
-      if (data.rsi !== null) {
-        const w = weights[tf] || 1;
-        totalWeight += w;
-        if (data.rsi <= 30) buyScore += w;
-        else if (data.rsi >= 70) sellScore += w;
-      }
-    }
-
+    // Overall action: check divergence across all timeframes first
     let overallAction = 'wait';
-    if (totalWeight > 0) {
-      if (buyScore / totalWeight >= 0.5) overallAction = 'buy';
-      else if (sellScore / totalWeight >= 0.5) overallAction = 'sell';
+    let anyBullish = false;
+    let anyBearish = false;
+
+    for (const [, data] of Object.entries(rsiData)) {
+      if (data.divergence?.bullish) anyBullish = true;
+      if (data.divergence?.bearish) anyBearish = true;
     }
 
-    const overallRecommendation = getRecommendation(
-      Object.values(rsiData).find(d => d.rsi !== null)?.rsi || 50
-    );
+    if (anyBullish) overallAction = 'buy';
+    else if (anyBearish) overallAction = 'sell';
+
+    const overallRecommendation = getRecommendation(primaryRSI || 50, primaryDivergence);
 
     res.json({
       symbol: symbol.toUpperCase(),
       price,
       priceSource,
+      primaryRSI,
+      primaryTimeframe: primaryTF,
+      divergence: primaryDivergence,
       timeframes: rsiData,
       overall: {
         action: overallAction,
@@ -167,11 +168,12 @@ app.get('/api/rsi', async (req, res) => {
         const rsiData = calculateMultiTimeframeRSI(candlesByTimeframe, period);
         const { price } = await fetchCurrentPrice(token.symbol);
 
-        // Get primary RSI (1d preferred)
-        const primaryTF = rsiData['1d']?.rsi !== null ? '1d'
-          : rsiData['4h']?.rsi !== null ? '4h' : '1h';
+        // Primary RSI: shortest timeframe for most current reading
+        const primaryTF = rsiData['1h']?.rsi !== null ? '1h'
+          : rsiData['4h']?.rsi !== null ? '4h' : '1d';
         const primaryRSI = rsiData[primaryTF]?.rsi || null;
-        const recommendation = primaryRSI !== null ? getRecommendation(primaryRSI) : null;
+        const primaryDivergence = rsiData[primaryTF]?.divergence || null;
+        const recommendation = primaryRSI !== null ? getRecommendation(primaryRSI, primaryDivergence) : null;
 
         return {
           symbol: token.symbol,
@@ -179,6 +181,7 @@ app.get('/api/rsi', async (req, res) => {
           price,
           primaryRSI,
           primaryTimeframe: primaryTF,
+          divergence: primaryDivergence,
           recommendation,
           timeframes: rsiData,
           updatedAt: new Date().toISOString()
@@ -460,14 +463,16 @@ async function fetchAllRSI() {
 
         const rsiData = calculateMultiTimeframeRSI(candlesByTimeframe, 14);
         const { price } = await fetchCurrentPrice(token.symbol);
-        const primaryTF = rsiData['1d']?.rsi !== null ? '1d'
-          : rsiData['4h']?.rsi !== null ? '4h' : '1h';
+        const primaryTF = rsiData['1h']?.rsi !== null ? '1h'
+          : rsiData['4h']?.rsi !== null ? '4h' : '1d';
         const primaryRSI = rsiData[primaryTF]?.rsi || null;
-        const recommendation = primaryRSI !== null ? getRecommendation(primaryRSI) : null;
+        const primaryDivergence = rsiData[primaryTF]?.divergence || null;
+        const recommendation = primaryRSI !== null ? getRecommendation(primaryRSI, primaryDivergence) : null;
 
         return {
           symbol: token.symbol, name: token.name, price,
-          primaryRSI, recommendation, timeframes: rsiData,
+          primaryRSI, primaryTimeframe: primaryTF, divergence: primaryDivergence,
+          recommendation, timeframes: rsiData,
         };
       } catch (e) {
         return { symbol: token.symbol, name: token.name, error: e.message };

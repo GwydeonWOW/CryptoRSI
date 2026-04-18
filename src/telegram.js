@@ -163,44 +163,82 @@ async function checkAndNotify(rsiDataArray) {
     if (!token.primaryRSI || !token.recommendation) continue;
 
     const { symbol, name, price, primaryRSI, recommendation } = token;
+    const divergence = token.divergence;
+    const rsi1d = token.timeframes?.['1d']?.rsi;
+    const rsi4h = token.timeframes?.['4h']?.rsi;
+    const rsi1h = token.timeframes?.['1h']?.rsi;
+    const priceStr = price?.toLocaleString('en-US', { maximumFractionDigits: 2 }) || '?';
 
-    if (primaryRSI <= 30) {
-      const key = `buy:${symbol}`;
+    // Bullish divergence signal (priority)
+    if (divergence?.bullish) {
+      const key = `bull:${symbol}`;
       const lastSent = sentSignals.get(key);
       if (lastSent && now - lastSent < NOTIFY_COOLDOWN_MS) continue;
 
-      const rsi1d = token.timeframes?.['1d']?.rsi;
-      const rsi4h = token.timeframes?.['4h']?.rsi;
-      const rsi1h = token.timeframes?.['1h']?.rsi;
-
+      const strengthLabel = divergence.strength === 'strong' ? 'FUERTE' : divergence.strength === 'normal' ? 'Normal' : 'Debil';
       const text =
-        `🟢 <b>SEÑAL DE COMPRA</b> — ${name || symbol}\n\n` +
-        `📊 RSI Principal: <b>${primaryRSI.toFixed(1)}</b> (${recommendation.action})\n` +
-        `💰 Precio: <b>$${price?.toLocaleString('en-US', { maximumFractionDigits: 2 }) || '?'}</b>\n\n` +
+        `🐂 <b>DIVERGENCIA ALCISTA (BULL)</b> — ${name || symbol}\n\n` +
+        `💪 Fuerza: <b>${strengthLabel}</b>\n` +
+        `📝 ${divergence.reason || 'Precio baja pero RSI sube'}\n\n` +
+        `📊 RSI: <b>${primaryRSI.toFixed(1)}</b> (${token.primaryTimeframe || '-'})\n` +
+        `💰 Precio: <b>$${priceStr}</b>\n\n` +
         `⏱ RSI por timeframe:\n` +
         `   1D: ${rsi1d?.toFixed(1) || '-'}  |  4H: ${rsi4h?.toFixed(1) || '-'}  |  1H: ${rsi1h?.toFixed(1) || '-'}\n\n` +
-        `⚡ RSI en zona de sobreventa (≤30). Posible oportunidad de compra.`;
+        `⚡ Señal de compra: la presion vendedora se debilita. Posible rebote alcista.`;
 
       const sent = await sendTelegramMessage(text);
       if (sent) sentSignals.set(key, now);
     }
 
-    if (primaryRSI >= 70) {
+    // Bearish divergence signal (priority)
+    if (divergence?.bearish) {
+      const key = `bear:${symbol}`;
+      const lastSent = sentSignals.get(key);
+      if (lastSent && now - lastSent < NOTIFY_COOLDOWN_MS) continue;
+
+      const strengthLabel = divergence.strength === 'strong' ? 'FUERTE' : divergence.strength === 'normal' ? 'Normal' : 'Debil';
+      const text =
+        `🐻 <b>DIVERGENCIA BAJISTA (BEAR)</b> — ${name || symbol}\n\n` +
+        `⚠️ Fuerza: <b>${strengthLabel}</b>\n` +
+        `📝 ${divergence.reason || 'Precio sube pero RSI baja'}\n\n` +
+        `📊 RSI: <b>${primaryRSI.toFixed(1)}</b> (${token.primaryTimeframe || '-'})\n` +
+        `💰 Precio: <b>$${priceStr}</b>\n\n` +
+        `⏱ RSI por timeframe:\n` +
+        `   1D: ${rsi1d?.toFixed(1) || '-'}  |  4H: ${rsi4h?.toFixed(1) || '-'}  |  1H: ${rsi1h?.toFixed(1) || '-'}\n\n` +
+        `⚠️ Señal de venta: la presion compradora se debilita. Posible correccion bajista.`;
+
+      const sent = await sendTelegramMessage(text);
+      if (sent) sentSignals.set(key, now);
+    }
+
+    // Fallback: classic RSI signals (only if no divergence was detected)
+    if (!divergence?.bullish && !divergence?.bearish && primaryRSI <= 30) {
+      const key = `buy:${symbol}`;
+      const lastSent = sentSignals.get(key);
+      if (lastSent && now - lastSent < NOTIFY_COOLDOWN_MS) continue;
+
+      const text =
+        `🟢 <b>SOBREVENTA</b> — ${name || symbol}\n\n` +
+        `📊 RSI: <b>${primaryRSI.toFixed(1)}</b> (${token.primaryTimeframe || '-'})\n` +
+        `💰 Precio: <b>$${priceStr}</b>\n\n` +
+        `⏱ 1D: ${rsi1d?.toFixed(1) || '-'}  |  4H: ${rsi4h?.toFixed(1) || '-'}  |  1H: ${rsi1h?.toFixed(1) || '-'}\n\n` +
+        `⚡ RSI en zona de sobreventa (≤30). Sin divergencia detectada.`;
+
+      const sent = await sendTelegramMessage(text);
+      if (sent) sentSignals.set(key, now);
+    }
+
+    if (!divergence?.bullish && !divergence?.bearish && primaryRSI >= 70) {
       const key = `sell:${symbol}`;
       const lastSent = sentSignals.get(key);
       if (lastSent && now - lastSent < NOTIFY_COOLDOWN_MS) continue;
 
-      const rsi1d = token.timeframes?.['1d']?.rsi;
-      const rsi4h = token.timeframes?.['4h']?.rsi;
-      const rsi1h = token.timeframes?.['1h']?.rsi;
-
       const text =
-        `🔴 <b>SEÑAL DE VENTA</b> — ${name || symbol}\n\n` +
-        `📊 RSI Principal: <b>${primaryRSI.toFixed(1)}</b> (${recommendation.action})\n` +
-        `💰 Precio: <b>$${price?.toLocaleString('en-US', { maximumFractionDigits: 2 }) || '?'}</b>\n\n` +
-        `⏱ RSI por timeframe:\n` +
-        `   1D: ${rsi1d?.toFixed(1) || '-'}  |  4H: ${rsi4h?.toFixed(1) || '-'}  |  1H: ${rsi1h?.toFixed(1) || '-'}\n\n` +
-        `⚠️ RSI en zona de sobrecompra (≥70). Posible señal de venta.`;
+        `🔴 <b>SOBRECOMPRA</b> — ${name || symbol}\n\n` +
+        `📊 RSI: <b>${primaryRSI.toFixed(1)}</b> (${token.primaryTimeframe || '-'})\n` +
+        `💰 Precio: <b>$${priceStr}</b>\n\n` +
+        `⏱ 1D: ${rsi1d?.toFixed(1) || '-'}  |  4H: ${rsi4h?.toFixed(1) || '-'}  |  1H: ${rsi1h?.toFixed(1) || '-'}\n\n` +
+        `⚠️ RSI en zona de sobrecompra (≥70). Sin divergencia detectada.`;
 
       const sent = await sendTelegramMessage(text);
       if (sent) sentSignals.set(key, now);
