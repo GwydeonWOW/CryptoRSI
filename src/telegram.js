@@ -177,12 +177,12 @@ async function checkAndNotify(rsiDataArray) {
 
       const strengthLabel = divergence.strength === 'strong' ? 'FUERTE' : divergence.strength === 'normal' ? 'Normal' : 'Debil';
       const text =
-        `🐂 <b>DIVERGENCIA ALCISTA (BULL)</b> — ${name || symbol}\n\n` +
-        `💪 Fuerza: <b>${strengthLabel}</b>\n` +
-        `📝 ${divergence.reason || 'Precio baja pero RSI sube'}\n\n` +
+        `[BULL] <b>DIVERGENCIA ALCISTA</b> — ${name || symbol}\n\n` +
+        `Fuerza: <b>${strengthLabel}</b>\n` +
+        `${divergence.reason || 'Precio baja pero RSI sube'}\n\n` +
         `📊 RSI: <b>${primaryRSI.toFixed(1)}</b> (${token.primaryTimeframe || '-'})\n` +
         `💰 Precio: <b>$${priceStr}</b>\n\n` +
-        `⏱ RSI por timeframe:\n` +
+        `RSI por timeframe:\n` +
         `   1D: ${rsi1d?.toFixed(1) || '-'}  |  4H: ${rsi4h?.toFixed(1) || '-'}  |  1H: ${rsi1h?.toFixed(1) || '-'}\n\n` +
         `⚡ Señal de compra: la presion vendedora se debilita. Posible rebote alcista.`;
 
@@ -198,12 +198,12 @@ async function checkAndNotify(rsiDataArray) {
 
       const strengthLabel = divergence.strength === 'strong' ? 'FUERTE' : divergence.strength === 'normal' ? 'Normal' : 'Debil';
       const text =
-        `🐻 <b>DIVERGENCIA BAJISTA (BEAR)</b> — ${name || symbol}\n\n` +
-        `⚠️ Fuerza: <b>${strengthLabel}</b>\n` +
-        `📝 ${divergence.reason || 'Precio sube pero RSI baja'}\n\n` +
+        `[BEAR] <b>DIVERGENCIA BAJISTA</b> — ${name || symbol}\n\n` +
+        `Fuerza: <b>${strengthLabel}</b>\n` +
+        `${divergence.reason || 'Precio sube pero RSI baja'}\n\n` +
         `📊 RSI: <b>${primaryRSI.toFixed(1)}</b> (${token.primaryTimeframe || '-'})\n` +
         `💰 Precio: <b>$${priceStr}</b>\n\n` +
-        `⏱ RSI por timeframe:\n` +
+        `RSI por timeframe:\n` +
         `   1D: ${rsi1d?.toFixed(1) || '-'}  |  4H: ${rsi4h?.toFixed(1) || '-'}  |  1H: ${rsi1h?.toFixed(1) || '-'}\n\n` +
         `⚠️ Señal de venta: la presion compradora se debilita. Posible correccion bajista.`;
 
