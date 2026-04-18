@@ -6,7 +6,7 @@ const { fetchCandles, fetchCurrentPrice } = require('./api');
 const { loadTokens, addToken, removeToken } = require('./config');
 const { openPosition, closePosition, getOpenPositions, getHistory, getStats } = require('./trades');
 const { getMarketAnalysis } = require('./futures');
-const { checkAndNotify } = require('./telegram');
+const { checkAndNotify, startBotPolling } = require('./telegram');
 const { authMiddleware, adminMiddleware, generateToken, verifyPassword } = require('./auth');
 const { ensureAdmin, listUsers, getUserByUsername, createUser, deleteUser, updateUser } = require('./users');
 const {
@@ -434,6 +434,50 @@ app.get('/{*path}', (req, res) => {
 // Collects snapshots every 15 minutes to build historical data
 // ============================================================
 
+/**
+ * Fetch RSI for all tracked tokens (used by /rsi Telegram command)
+ */
+async function fetchAllRSI() {
+  const tokens = loadTokens();
+  const timeframes = ['1h', '4h', '1d'];
+
+  const results = await Promise.allSettled(
+    tokens.map(async (token) => {
+      try {
+        const candlesByTimeframe = {};
+        const fetches = timeframes.map(async tf => {
+          try {
+            const { candles } = await fetchCandles(token.symbol, tf);
+            return { tf, closes: candles.map(c => c.close) };
+          } catch (e) {
+            return { tf, closes: [] };
+          }
+        });
+        const fetchResults = await Promise.all(fetches);
+        for (const r of fetchResults) {
+          if (r.closes.length > 0) candlesByTimeframe[r.tf] = r.closes;
+        }
+
+        const rsiData = calculateMultiTimeframeRSI(candlesByTimeframe, 14);
+        const { price } = await fetchCurrentPrice(token.symbol);
+        const primaryTF = rsiData['1d']?.rsi !== null ? '1d'
+          : rsiData['4h']?.rsi !== null ? '4h' : '1h';
+        const primaryRSI = rsiData[primaryTF]?.rsi || null;
+        const recommendation = primaryRSI !== null ? getRecommendation(primaryRSI) : null;
+
+        return {
+          symbol: token.symbol, name: token.name, price,
+          primaryRSI, recommendation, timeframes: rsiData,
+        };
+      } catch (e) {
+        return { symbol: token.symbol, name: token.name, error: e.message };
+      }
+    })
+  );
+
+  return results.map(r => r.status === 'fulfilled' ? r.value : { error: r.reason?.message });
+}
+
 async function collectSnapshot() {
   console.log(`[${new Date().toISOString()}] Collecting data snapshot...`);
 
@@ -519,6 +563,9 @@ app.listen(PORT, async () => {
 
   // Ensure default admin user exists
   await ensureAdmin();
+
+  // Start Telegram bot polling for /rsi command
+  startBotPolling(fetchAllRSI);
 
   // Collect initial snapshot after 30s (let server warm up)
   setTimeout(collectSnapshot, 30000);
