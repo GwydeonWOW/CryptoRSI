@@ -6,6 +6,7 @@ const { fetchCandles, fetchCurrentPrice } = require('./api');
 const { loadTokens, addToken, removeToken } = require('./config');
 const { openPosition, closePosition, getOpenPositions, getHistory, getStats } = require('./trades');
 const { getMarketAnalysis } = require('./futures');
+const { checkAndNotify } = require('./telegram');
 const { authMiddleware, adminMiddleware, generateToken, verifyPassword } = require('./auth');
 const { ensureAdmin, listUsers, getUserByUsername, createUser, deleteUser, updateUser } = require('./users');
 const {
@@ -486,6 +487,9 @@ async function collectSnapshot() {
     if (rsiDataArray.length > 0) {
       saveRSISnapshot(rsiDataArray);
       console.log(`  RSI snapshot saved: ${rsiDataArray.length} tokens`);
+
+      // Check RSI signals and send Telegram notifications
+      checkAndNotify(rsiDataArray);
 
       // Save price snapshot
       const prices = rsiDataArray.map(t => ({ symbol: t.symbol, price: t.price }));
