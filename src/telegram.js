@@ -77,7 +77,7 @@ function startBotPolling(getRSIForAllTokens) {
   }
 
   poll();
-  console.log('Telegram bot polling started (/rsi command available)');
+  console.log(`Telegram bot polling started (/rsi command available) | Chat ID: ${CHAT_ID} | Token: ${BOT_TOKEN ? BOT_TOKEN.slice(0, 10) + '...' : 'NOT SET'}`);
 }
 
 async function handleRSICommand(chatId, getRSIForAllTokens) {

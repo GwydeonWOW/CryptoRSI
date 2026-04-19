@@ -510,16 +510,19 @@ async function collectSnapshot() {
 
           const rsiData = calculateMultiTimeframeRSI(candlesByTimeframe, 14);
           const { price } = await fetchCurrentPrice(token.symbol);
-          const primaryTF = rsiData['1d']?.rsi !== null ? '1d'
-            : rsiData['4h']?.rsi !== null ? '4h' : '1h';
+          const primaryTF = rsiData['1h']?.rsi !== null ? '1h'
+            : rsiData['4h']?.rsi !== null ? '4h' : '1d';
           const primaryRSI = rsiData[primaryTF]?.rsi || null;
-          const recommendation = primaryRSI !== null ? getRecommendation(primaryRSI) : null;
+          const primaryDivergence = rsiData[primaryTF]?.divergence || null;
+          const recommendation = primaryRSI !== null ? getRecommendation(primaryRSI, primaryDivergence) : null;
 
           return {
             symbol: token.symbol,
             name: token.name,
             price,
             primaryRSI,
+            primaryTimeframe: primaryTF,
+            divergence: primaryDivergence,
             recommendation,
             timeframes: rsiData,
           };
@@ -538,6 +541,14 @@ async function collectSnapshot() {
       console.log(`  RSI snapshot saved: ${rsiDataArray.length} tokens`);
 
       // Check RSI signals and send Telegram notifications
+      const divergences = rsiDataArray.filter(t => t.divergence?.bullish || t.divergence?.bearish);
+      if (divergences.length > 0) {
+        console.log(`  Divergences detected: ${divergences.map(t => `${t.symbol}(${t.divergence.bullish ? 'BULL' : 'BEAR'})`).join(', ')}`);
+      }
+      const extremes = rsiDataArray.filter(t => t.primaryRSI !== null && (t.primaryRSI <= 30 || t.primaryRSI >= 70));
+      if (extremes.length > 0) {
+        console.log(`  RSI extremes: ${extremes.map(t => `${t.symbol}(${t.primaryRSI?.toFixed(1)})`).join(', ')}`);
+      }
       checkAndNotify(rsiDataArray);
 
       // Save price snapshot
