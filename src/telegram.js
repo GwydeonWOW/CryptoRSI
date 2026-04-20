@@ -171,8 +171,8 @@ async function checkAndNotify(rsiDataArray) {
     const rsi15m = token.timeframes?.['15m']?.rsi;
     const priceStr = price?.toLocaleString('en-US', { maximumFractionDigits: 2 }) || '?';
 
-    // Bullish divergence signal (priority)
-    if (divergence?.bullish) {
+    // Bullish divergence signal (priority) — solo si RSI está en zona de compra (≤40)
+    if (divergence?.bullish && primaryRSI <= 40) {
       const key = `bull:${symbol}`;
       const lastSent = sentSignals.get(key);
       if (lastSent && now - lastSent < NOTIFY_COOLDOWN_MS) continue;
@@ -192,8 +192,8 @@ async function checkAndNotify(rsiDataArray) {
       if (sent) sentSignals.set(key, now);
     }
 
-    // Bearish divergence signal (priority)
-    if (divergence?.bearish) {
+    // Bearish divergence signal (priority) — solo si RSI está en zona de venta (≥60)
+    if (divergence?.bearish && primaryRSI >= 60) {
       const key = `bear:${symbol}`;
       const lastSent = sentSignals.get(key);
       if (lastSent && now - lastSent < NOTIFY_COOLDOWN_MS) continue;
