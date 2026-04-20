@@ -53,35 +53,51 @@ function calculateRSI(closes, period = 14) {
 // ============================================================
 
 /**
- * Find local extrema (peaks and troughs) in an array
- * @returns {Array<{index: number, value: number}>} Array of extrema
+ * Find local peaks using pivot lookback (TradingView-style).
+ * A peak at index i is confirmed when arr[i] >= all values
+ * within `leftBars` to the left and `rightBars` to the right.
+ *
+ * @param {number[]} arr - Data array
+ * @param {number} leftBars - Bars to check left (default 5)
+ * @param {number} rightBars - Bars to check right (default 5)
+ * @returns {Array<{index: number, value: number}>}
  */
-function findPeaks(arr) {
+function findPeaks(arr, leftBars = 5, rightBars = 5) {
   const peaks = [];
-  for (let i = 1; i < arr.length - 1; i++) {
-    if (arr[i] > arr[i - 1] && arr[i] > arr[i + 1]) {
-      peaks.push({ index: i, value: arr[i] });
+  for (let i = leftBars; i < arr.length - rightBars; i++) {
+    let isPeak = true;
+    for (let l = 1; l <= leftBars; l++) {
+      if (arr[i] < arr[i - l]) { isPeak = false; break; }
     }
-    // Also include flat peaks (equal to neighbors)
-    if (arr[i] >= arr[i - 1] && arr[i] > arr[i + 1] && arr[i] >= arr[i - 2]) {
-      if (peaks.length === 0 || peaks[peaks.length - 1].index !== i) {
-        peaks.push({ index: i, value: arr[i] });
-      }
+    if (!isPeak) continue;
+    for (let r = 1; r <= rightBars; r++) {
+      if (arr[i] < arr[i + r]) { isPeak = false; break; }
+    }
+    if (isPeak) {
+      peaks.push({ index: i, value: arr[i] });
     }
   }
   return peaks;
 }
 
-function findTroughs(arr) {
+/**
+ * Find local troughs using pivot lookback (TradingView-style).
+ * A trough at index i is confirmed when arr[i] <= all values
+ * within `leftBars` to the left and `rightBars` to the right.
+ */
+function findTroughs(arr, leftBars = 5, rightBars = 5) {
   const troughs = [];
-  for (let i = 1; i < arr.length - 1; i++) {
-    if (arr[i] < arr[i - 1] && arr[i] < arr[i + 1]) {
-      troughs.push({ index: i, value: arr[i] });
+  for (let i = leftBars; i < arr.length - rightBars; i++) {
+    let isTrough = true;
+    for (let l = 1; l <= leftBars; l++) {
+      if (arr[i] > arr[i - l]) { isTrough = false; break; }
     }
-    if (arr[i] <= arr[i - 1] && arr[i] < arr[i + 1] && arr[i] <= arr[i - 2]) {
-      if (troughs.length === 0 || troughs[troughs.length - 1].index !== i) {
-        troughs.push({ index: i, value: arr[i] });
-      }
+    if (!isTrough) continue;
+    for (let r = 1; r <= rightBars; r++) {
+      if (arr[i] > arr[i + r]) { isTrough = false; break; }
+    }
+    if (isTrough) {
+      troughs.push({ index: i, value: arr[i] });
     }
   }
   return troughs;
@@ -101,28 +117,35 @@ function findTroughs(arr) {
  * @param {number} lookback - How many periods to analyze (default 30)
  * @returns {{ bullish: boolean, bearish: boolean, strength: string, reason: string|null }}
  */
-function detectDivergence(closes, rsiValues, lookback = 30) {
+function detectDivergence(closes, rsiValues, options = {}) {
+  const {
+    maxLookback = 60,
+    minLookback = 5,
+    pivotLeft = 5,
+    pivotRight = 5,
+  } = options;
+
   if (!closes || !rsiValues || closes.length < 10 || rsiValues.length < 10) {
     return { bullish: false, bearish: false, strength: 'none', reason: null };
   }
 
-  // rsiValues starts after `period` closes, so we align them
-  // rsiValues[0] corresponds to closes[period]
-  const offset = closes.length - rsiValues.length;
-  const recentCloses = closes.slice(-lookback);
-  const recentRSI = rsiValues.slice(-lookback);
+  // Align closes with rsiValues (rsi starts after `period` closes)
+  const alignedCloses = closes.slice(closes.length - rsiValues.length);
 
-  if (recentRSI.length < 5) {
+  // Use maxLookback range, but ensure at least minLookback bars
+  const lookback = Math.min(maxLookback, alignedCloses.length);
+  if (lookback < minLookback) {
     return { bullish: false, bearish: false, strength: 'none', reason: null };
   }
 
-  // Find troughs (for bullish divergence)
-  const priceTroughs = findTroughs(recentCloses);
-  const rsiTroughs = findTroughs(recentRSI);
+  const recentCloses = alignedCloses.slice(-lookback);
+  const recentRSI = rsiValues.slice(-lookback);
 
-  // Find peaks (for bearish divergence)
-  const pricePeaks = findPeaks(recentCloses);
-  const rsiPeaks = findPeaks(recentRSI);
+  // Find pivots with TradingView-style lookback
+  const priceTroughs = findTroughs(recentCloses, pivotLeft, pivotRight);
+  const rsiTroughs = findTroughs(recentRSI, pivotLeft, pivotRight);
+  const pricePeaks = findPeaks(recentCloses, pivotLeft, pivotRight);
+  const rsiPeaks = findPeaks(recentRSI, pivotLeft, pivotRight);
 
   let bullish = false;
   let bearish = false;
@@ -130,8 +153,7 @@ function detectDivergence(closes, rsiValues, lookback = 30) {
   let bearStrength = 'none';
   let reason = null;
 
-  // Bullish divergence: need at least 2 troughs
-  // Price troughs go DOWN but RSI troughs go UP
+  // Regular Bullish divergence: price lower low + RSI higher low
   if (priceTroughs.length >= 2 && rsiTroughs.length >= 2) {
     const lastPriceTrough = priceTroughs[priceTroughs.length - 1];
     const prevPriceTrough = priceTroughs[priceTroughs.length - 2];
@@ -154,8 +176,7 @@ function detectDivergence(closes, rsiValues, lookback = 30) {
     }
   }
 
-  // Bearish divergence: need at least 2 peaks
-  // Price peaks go UP but RSI peaks go DOWN
+  // Regular Bearish divergence: price higher high + RSI lower high
   if (pricePeaks.length >= 2 && rsiPeaks.length >= 2) {
     const lastPricePeak = pricePeaks[pricePeaks.length - 1];
     const prevPricePeak = pricePeaks[pricePeaks.length - 2];

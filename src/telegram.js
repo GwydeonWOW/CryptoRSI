@@ -110,11 +110,12 @@ async function handleRSICommand(chatId, getRSIForAllTokens) {
       const rsi1d = token.timeframes?.['1d']?.rsi;
       const rsi4h = token.timeframes?.['4h']?.rsi;
       const rsi1h = token.timeframes?.['1h']?.rsi;
+      const rsi15m = token.timeframes?.['15m']?.rsi;
 
       text +=
         `${emoji} <b>${token.name || token.symbol}</b> — $${price}\n` +
         `   RSI: <b>${rsi?.toFixed(1) || '-'}</b> → ${action}\n` +
-        `   1D: ${rsi1d?.toFixed(1) || '-'}  |  4H: ${rsi4h?.toFixed(1) || '-'}  |  1H: ${rsi1h?.toFixed(1) || '-'}\n\n`;
+        `   15m: ${rsi15m?.toFixed(1) || '-'}  |  1H: ${rsi1h?.toFixed(1) || '-'}  |  4H: ${rsi4h?.toFixed(1) || '-'}  |  1D: ${rsi1d?.toFixed(1) || '-'}\n\n`;
     }
 
     text += `🔄 Actualizado: ${new Date().toLocaleString('es-ES')}`;
@@ -167,6 +168,7 @@ async function checkAndNotify(rsiDataArray) {
     const rsi1d = token.timeframes?.['1d']?.rsi;
     const rsi4h = token.timeframes?.['4h']?.rsi;
     const rsi1h = token.timeframes?.['1h']?.rsi;
+    const rsi15m = token.timeframes?.['15m']?.rsi;
     const priceStr = price?.toLocaleString('en-US', { maximumFractionDigits: 2 }) || '?';
 
     // Bullish divergence signal (priority)
@@ -183,7 +185,7 @@ async function checkAndNotify(rsiDataArray) {
         `📊 RSI: <b>${primaryRSI.toFixed(1)}</b> (${token.primaryTimeframe || '-'})\n` +
         `💰 Precio: <b>$${priceStr}</b>\n\n` +
         `RSI por timeframe:\n` +
-        `   1D: ${rsi1d?.toFixed(1) || '-'}  |  4H: ${rsi4h?.toFixed(1) || '-'}  |  1H: ${rsi1h?.toFixed(1) || '-'}\n\n` +
+        `   15m: ${rsi15m?.toFixed(1) || '-'}  |  1H: ${rsi1h?.toFixed(1) || '-'}  |  4H: ${rsi4h?.toFixed(1) || '-'}  |  1D: ${rsi1d?.toFixed(1) || '-'}\n\n` +
         `⚡ Señal de compra: la presion vendedora se debilita. Posible rebote alcista.`;
 
       const sent = await sendTelegramMessage(text);
@@ -204,7 +206,7 @@ async function checkAndNotify(rsiDataArray) {
         `📊 RSI: <b>${primaryRSI.toFixed(1)}</b> (${token.primaryTimeframe || '-'})\n` +
         `💰 Precio: <b>$${priceStr}</b>\n\n` +
         `RSI por timeframe:\n` +
-        `   1D: ${rsi1d?.toFixed(1) || '-'}  |  4H: ${rsi4h?.toFixed(1) || '-'}  |  1H: ${rsi1h?.toFixed(1) || '-'}\n\n` +
+        `   15m: ${rsi15m?.toFixed(1) || '-'}  |  1H: ${rsi1h?.toFixed(1) || '-'}  |  4H: ${rsi4h?.toFixed(1) || '-'}  |  1D: ${rsi1d?.toFixed(1) || '-'}\n\n` +
         `⚠️ Señal de venta: la presion compradora se debilita. Posible correccion bajista.`;
 
       const sent = await sendTelegramMessage(text);
@@ -221,7 +223,7 @@ async function checkAndNotify(rsiDataArray) {
         `🟢 <b>SOBREVENTA</b> — ${name || symbol}\n\n` +
         `📊 RSI: <b>${primaryRSI.toFixed(1)}</b> (${token.primaryTimeframe || '-'})\n` +
         `💰 Precio: <b>$${priceStr}</b>\n\n` +
-        `⏱ 1D: ${rsi1d?.toFixed(1) || '-'}  |  4H: ${rsi4h?.toFixed(1) || '-'}  |  1H: ${rsi1h?.toFixed(1) || '-'}\n\n` +
+        `⏱ 15m: ${rsi15m?.toFixed(1) || '-'}  |  1H: ${rsi1h?.toFixed(1) || '-'}  |  4H: ${rsi4h?.toFixed(1) || '-'}  |  1D: ${rsi1d?.toFixed(1) || '-'}\n\n` +
         `⚡ RSI en zona de sobreventa (≤30). Sin divergencia detectada.`;
 
       const sent = await sendTelegramMessage(text);
@@ -237,7 +239,7 @@ async function checkAndNotify(rsiDataArray) {
         `🔴 <b>SOBRECOMPRA</b> — ${name || symbol}\n\n` +
         `📊 RSI: <b>${primaryRSI.toFixed(1)}</b> (${token.primaryTimeframe || '-'})\n` +
         `💰 Precio: <b>$${priceStr}</b>\n\n` +
-        `⏱ 1D: ${rsi1d?.toFixed(1) || '-'}  |  4H: ${rsi4h?.toFixed(1) || '-'}  |  1H: ${rsi1h?.toFixed(1) || '-'}\n\n` +
+        `⏱ 15m: ${rsi15m?.toFixed(1) || '-'}  |  1H: ${rsi1h?.toFixed(1) || '-'}  |  4H: ${rsi4h?.toFixed(1) || '-'}  |  1D: ${rsi1d?.toFixed(1) || '-'}\n\n` +
         `⚠️ RSI en zona de sobrecompra (≥70). Sin divergencia detectada.`;
 
       const sent = await sendTelegramMessage(text);

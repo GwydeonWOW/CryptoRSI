@@ -66,7 +66,7 @@ app.delete('/api/tokens/:symbol', authMiddleware, adminMiddleware, (req, res) =>
  */
 app.get('/api/rsi/:symbol', async (req, res) => {
   const { symbol } = req.params;
-  const timeframes = (req.query.timeframes || '1h,4h,1d').split(',');
+  const timeframes = (req.query.timeframes || '15m,1h,4h,1d').split(',');
   const period = parseInt(req.query.period) || 14;
 
   try {
@@ -96,7 +96,8 @@ app.get('/api/rsi/:symbol', async (req, res) => {
     const { price, source: priceSource } = await fetchCurrentPrice(symbol);
 
     // Primary RSI: use shortest available timeframe for most current reading
-    const primaryTF = rsiData['1h']?.rsi !== null ? '1h'
+    const primaryTF = rsiData['15m']?.rsi !== null ? '15m'
+      : rsiData['1h']?.rsi !== null ? '1h'
       : rsiData['4h']?.rsi !== null ? '4h' : '1d';
     const primaryRSI = rsiData[primaryTF]?.rsi || null;
     const primaryDivergence = rsiData[primaryTF]?.divergence || null;
@@ -142,7 +143,7 @@ app.get('/api/rsi/:symbol', async (req, res) => {
  */
 app.get('/api/rsi', async (req, res) => {
   const tokens = loadTokens();
-  const timeframes = (req.query.timeframes || '1h,4h,1d').split(',');
+  const timeframes = (req.query.timeframes || '15m,1h,4h,1d').split(',');
   const period = parseInt(req.query.period) || 14;
 
   const results = await Promise.allSettled(
@@ -169,7 +170,8 @@ app.get('/api/rsi', async (req, res) => {
         const { price } = await fetchCurrentPrice(token.symbol);
 
         // Primary RSI: shortest timeframe for most current reading
-        const primaryTF = rsiData['1h']?.rsi !== null ? '1h'
+        const primaryTF = rsiData['15m']?.rsi !== null ? '15m'
+          : rsiData['1h']?.rsi !== null ? '1h'
           : rsiData['4h']?.rsi !== null ? '4h' : '1d';
         const primaryRSI = rsiData[primaryTF]?.rsi || null;
         const primaryDivergence = rsiData[primaryTF]?.divergence || null;
@@ -442,7 +444,7 @@ app.get('/{*path}', (req, res) => {
  */
 async function fetchAllRSI() {
   const tokens = loadTokens();
-  const timeframes = ['1h', '4h', '1d'];
+  const timeframes = ['15m', '1h', '4h', '1d'];
 
   const results = await Promise.allSettled(
     tokens.map(async (token) => {
@@ -463,7 +465,8 @@ async function fetchAllRSI() {
 
         const rsiData = calculateMultiTimeframeRSI(candlesByTimeframe, 14);
         const { price } = await fetchCurrentPrice(token.symbol);
-        const primaryTF = rsiData['1h']?.rsi !== null ? '1h'
+        const primaryTF = rsiData['15m']?.rsi !== null ? '15m'
+          : rsiData['1h']?.rsi !== null ? '1h'
           : rsiData['4h']?.rsi !== null ? '4h' : '1d';
         const primaryRSI = rsiData[primaryTF]?.rsi || null;
         const primaryDivergence = rsiData[primaryTF]?.divergence || null;
@@ -489,7 +492,7 @@ async function collectSnapshot() {
   try {
     // 1) RSI snapshot for all tracked tokens
     const tokens = loadTokens();
-    const timeframes = ['1h', '4h', '1d'];
+    const timeframes = ['15m', '1h', '4h', '1d'];
 
     const rsiResults = await Promise.allSettled(
       tokens.map(async (token) => {
@@ -510,7 +513,8 @@ async function collectSnapshot() {
 
           const rsiData = calculateMultiTimeframeRSI(candlesByTimeframe, 14);
           const { price } = await fetchCurrentPrice(token.symbol);
-          const primaryTF = rsiData['1h']?.rsi !== null ? '1h'
+          const primaryTF = rsiData['15m']?.rsi !== null ? '15m'
+            : rsiData['1h']?.rsi !== null ? '1h'
             : rsiData['4h']?.rsi !== null ? '4h' : '1d';
           const primaryRSI = rsiData[primaryTF]?.rsi || null;
           const primaryDivergence = rsiData[primaryTF]?.divergence || null;

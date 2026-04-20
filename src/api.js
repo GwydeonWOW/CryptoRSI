@@ -16,6 +16,7 @@ const COINCAP_BASE = 'https://api.coincap.io/v2';
 
 // Binance interval mapping
 const BINANCE_INTERVALS = {
+  '15m': '15m',
   '1h': '1h',
   '4h': '4h',
   '1d': '1d'
@@ -86,9 +87,13 @@ async function fetchBinanceCandles(symbol, interval, limit = CANDLE_LIMIT) {
 
 async function fetchCryptoCompareCandles(symbol, timeframe, limit = CANDLE_LIMIT) {
   const upperSymbol = symbol.toUpperCase().replace('USDT', '').replace('USD', '');
-  const endpoint = timeframe === '1d' ? 'histoday' : timeframe === '4h' ? 'histohour' : 'histohour';
+  let endpoint, aggregate;
+  if (timeframe === '1d') { endpoint = 'histoday'; aggregate = 1; }
+  else if (timeframe === '4h') { endpoint = 'histohour'; aggregate = 4; }
+  else if (timeframe === '15m') { endpoint = 'histominute'; aggregate = 15; }
+  else { endpoint = 'histohour'; aggregate = 1; }
 
-  const url = `${CRYPTOCOMPARE_BASE}/${endpoint}?fsym=${upperSymbol}&tsym=USDT&limit=${limit}${timeframe === '4h' ? '&aggregate=4' : ''}`;
+  const url = `${CRYPTOCOMPARE_BASE}/${endpoint}?fsym=${upperSymbol}&tsym=USDT&limit=${limit}&aggregate=${aggregate}`;
 
   const response = await fetch(url, {
     headers: { 'User-Agent': 'CryptoRSI/1.0' }
@@ -151,18 +156,20 @@ async function fetchCoinCapCandles(symbol, timeframe) {
 
   // CoinCap candle intervals: m1, m5, m15, m30, h1, h2, h6, h12, d1
   const intervalMap = {
+    '15m': 'm15',
     '1h': 'h1',
     '4h': 'h6',
     '1d': 'd1'
   };
   const interval = intervalMap[timeframe] || 'd1';
 
-  // Fetch last 24h of data depending on timeframe
+  // Fetch last N periods of data depending on timeframe
   const now = Date.now();
   let start;
-  if (timeframe === '1h') start = now - 100 * 60 * 60 * 1000;        // 100 hours
-  else if (timeframe === '4h') start = now - 100 * 4 * 60 * 60 * 1000; // 100 four-hours
-  else start = now - 100 * 24 * 60 * 60 * 1000;                        // 100 days
+  if (timeframe === '15m') start = now - 100 * 15 * 60 * 1000;           // 100 fifteen-minutes
+  else if (timeframe === '1h') start = now - 100 * 60 * 60 * 1000;        // 100 hours
+  else if (timeframe === '4h') start = now - 100 * 4 * 60 * 60 * 1000;   // 100 four-hours
+  else start = now - 100 * 24 * 60 * 60 * 1000;                           // 100 days
 
   const url = `${COINCAP_BASE}/assets/${assetId}/history?interval=${interval}&start=${start}&end=${now}`;
 
