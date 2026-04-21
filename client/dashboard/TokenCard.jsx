@@ -2,8 +2,9 @@ import RSIGauge from './RSIGauge';
 import RSIChart from './RSIChart';
 import TradePanel from './TradePanel';
 import { useState } from 'react';
+import { getAuthHeaders } from '../hooks/useAPI';
 
-export default function TokenCard({ data, position, onRefresh }) {
+export default function TokenCard({ data, position, onRefresh, isAdmin }) {
   if (data.error) {
     return (
       <div className="token-card" style={{ background: 'var(--surface)', borderRadius: 12, padding: '1.25rem', border: '1px solid var(--surface2)' }}>
@@ -20,6 +21,19 @@ export default function TokenCard({ data, position, onRefresh }) {
   const divergence = data.divergence;
   const activeTimeframes = Object.entries(data.timeframes || {}).filter(([_, v]) => v.rsi !== null);
   const hasPosition = !!position;
+
+  async function removeToken(symbol) {
+    if (!confirm(`Eliminar ${symbol} de los tokens trackeados?`)) return;
+    try {
+      const res = await fetch(`/api/tokens/${symbol}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+      });
+      const data = await res.json();
+      if (data.success) onRefresh();
+      else alert(data.message || 'Error al eliminar');
+    } catch (e) { alert('Error: ' + e.message); }
+  }
 
   return (
     <div style={{
@@ -56,8 +70,15 @@ export default function TokenCard({ data, position, onRefresh }) {
           </h3>
           <div style={{ color: 'var(--text-dim)', fontSize: '0.8rem' }}>{data.name || ''}</div>
         </div>
-        <div style={{ textAlign: 'right' }}>
+        <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: 8 }}>
           <div style={{ fontSize: '1.2rem', fontWeight: 600 }}>{formatPrice(data.price)}</div>
+          {isAdmin && (
+            <button onClick={() => removeToken(data.symbol)} title="Eliminar token"
+              style={{
+                background: 'none', border: 'none', cursor: 'pointer',
+                color: 'var(--text-dim)', fontSize: '1rem', padding: 2, lineHeight: 1,
+              }}>&times;</button>
+          )}
         </div>
       </div>
 

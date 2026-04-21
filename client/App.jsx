@@ -77,7 +77,7 @@ export default function App() {
         <RefreshBar onRefresh={refresh} />
         <TabNav activeTab={activeTab} onTabChange={handleTabChange} isAdmin={isAdmin} />
         <div style={{ display: activeTab === 'dashboard' ? 'block' : 'none' }}>
-          <Dashboard refreshTrigger={triggers.dashboard} />
+          <Dashboard refreshTrigger={triggers.dashboard} user={user} />
         </div>
         <div style={{ display: activeTab === 'market' ? 'block' : 'none' }}>
           <MarketAnalysis refreshTrigger={triggers.market} />

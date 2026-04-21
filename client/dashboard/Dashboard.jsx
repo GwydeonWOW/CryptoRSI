@@ -4,7 +4,7 @@ import TokenCard from './TokenCard';
 import AddTokenModal from './AddTokenModal';
 import Loading from '../components/Loading';
 
-export default function Dashboard({ refreshTrigger }) {
+export default function Dashboard({ refreshTrigger, user }) {
   const [tokens, setTokens] = useState([]);
   const [positions, setPositions] = useState({});
   const [loading, setLoading] = useState(false);
@@ -44,7 +44,7 @@ export default function Dashboard({ refreshTrigger }) {
       {loading && tokens.length === 0 ? <Loading text="Cargando datos RSI..." /> : (
         <div className="tokens-grid">
           {tokens.map(token => (
-            <TokenCard key={token.symbol} data={token} position={positions[token.symbol]} onRefresh={refresh} />
+            <TokenCard key={token.symbol} data={token} position={positions[token.symbol]} onRefresh={refresh} isAdmin={user?.role === 'admin'} />
           ))}
         </div>
       )}
