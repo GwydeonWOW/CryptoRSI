@@ -73,7 +73,7 @@ export default function App() {
   return (
     <>
       <Header onRefresh={refresh} refreshing={refreshing} lastUpdated={lastUpdated} user={user} onLogout={handleLogout} onProfile={() => setShowProfile(true)} />
-      <div style={{ maxWidth: 1100, margin: '0 auto', padding: '1.5rem 2rem' }}>
+      <div style={{ maxWidth: 1440, margin: '0 auto', padding: '1.5rem 2rem' }}>
         <RefreshBar onRefresh={refresh} />
         <TabNav activeTab={activeTab} onTabChange={handleTabChange} isAdmin={isAdmin} />
         <div style={{ display: activeTab === 'dashboard' ? 'block' : 'none' }}>
