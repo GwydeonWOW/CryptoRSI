@@ -78,9 +78,10 @@ function saveRSISnapshot(rsiDataArray) {
     tokens: rsiDataArray.map(t => ({
       symbol: t.symbol,
       price: t.price || null,
-      rsi1d: t.timeframes?.['1d']?.rsi ?? null,
-      rsi4h: t.timeframes?.['4h']?.rsi ?? null,
+      rsi15m: t.timeframes?.['15m']?.rsi ?? null,
       rsi1h: t.timeframes?.['1h']?.rsi ?? null,
+      rsi4h: t.timeframes?.['4h']?.rsi ?? null,
+      rsi1d: t.timeframes?.['1d']?.rsi ?? null,
       action: t.recommendation?.action || null,
     })),
   });

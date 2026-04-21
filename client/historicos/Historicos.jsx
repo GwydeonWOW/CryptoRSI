@@ -1,35 +1,45 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAPI } from '../hooks/useAPI';
 import Loading from '../components/Loading';
 
 export default function Historicos({ refreshTrigger }) {
   const [tokens, setTokens] = useState([]);
-  const [symbol, setSymbol] = useState('BTC');
+  const [symbol, setSymbol] = useState('');
   const [days, setDays] = useState(30);
   const [rsiHist, setRsiHist] = useState([]);
   const [priceHist, setPriceHist] = useState([]);
   const [sentimentHist, setSentimentHist] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    if (refreshTrigger <= 0) return;
-    useAPI('/api/tokens').then(t => { setTokens(t); if (t.length > 0) setSymbol(t[0].symbol); }).catch(() => {});
-  }, [refreshTrigger]);
-
-  async function loadData() {
+  const loadData = useCallback(async (sym, d) => {
+    if (!sym) return;
     setLoading(true);
     try {
       const [r, p, m] = await Promise.all([
-        useAPI(`/api/history/rsi/${symbol}?days=${days}`),
-        useAPI(`/api/history/prices/${symbol}?days=${days}`),
-        useAPI(`/api/history/market?days=${days}`),
+        useAPI(`/api/history/rsi/${sym}?days=${d}`),
+        useAPI(`/api/history/prices/${sym}?days=${d}`),
+        useAPI(`/api/history/market?days=${d}`),
       ]);
       setRsiHist(r);
       setPriceHist(p);
       setSentimentHist(m);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
-  }
+  }, []);
+
+  // Load tokens list on first trigger
+  useEffect(() => {
+    if (refreshTrigger <= 0) return;
+    useAPI('/api/tokens').then(t => {
+      setTokens(t);
+      if (t.length > 0) setSymbol(prev => prev || t[0].symbol);
+    }).catch(() => {});
+  }, [refreshTrigger]);
+
+  // Auto-load data when symbol or days changes
+  useEffect(() => {
+    if (symbol) loadData(symbol, days);
+  }, [symbol, days, loadData]);
 
   return (
     <div>
@@ -43,7 +53,7 @@ export default function Historicos({ refreshTrigger }) {
           <select value={days} onChange={e => setDays(Number(e.target.value))} style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem' }}>
             {[7, 14, 30, 60, 90].map(d => <option key={d} value={d}>{d} dias</option>)}
           </select>
-          <button className="btn btn-primary btn-sm" onClick={loadData}>Cargar</button>
+          <button className="btn btn-primary btn-sm" onClick={() => loadData(symbol, days)}>Cargar</button>
         </div>
         {loading ? <Loading text="Cargando..." /> : <LineChart data={rsiHist} valueFn={d => d.rsi1d} colorFn={v => v >= 70 ? '#ef4444' : v <= 30 ? '#22c55e' : 'var(--blue)'} refs={[{ value: 70, label: '70' }, { value: 50, label: '50' }, { value: 30, label: '30' }]} />}
       </div>
