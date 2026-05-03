@@ -3,7 +3,7 @@ export default function TabNav({ activeTab, onTabChange, isAdmin }) {
     { id: 'dashboard', label: 'Dashboard' },
     { id: 'market', label: 'Analisis de Mercado' },
     { id: 'historicos', label: 'Historicos' },
-    { id: 'history', label: 'Historial Trades' },
+    ...(isAdmin ? [{ id: 'settings', label: 'Configuracion' }] : []),
     ...(isAdmin ? [{ id: 'users', label: 'Usuarios' }] : []),
   ];
 

@@ -1,10 +1,9 @@
 import RSIGauge from './RSIGauge';
 import RSIChart from './RSIChart';
-import TradePanel from './TradePanel';
 import { useState } from 'react';
 import { getAuthHeaders } from '../hooks/useAPI';
 
-export default function TokenCard({ data, position, onRefresh, isAdmin }) {
+export default function TokenCard({ data, onRefresh, isAdmin }) {
   if (data.error) {
     return (
       <div className="token-card" style={{ background: 'var(--surface)', borderRadius: 12, padding: '1.25rem', border: '1px solid var(--surface2)' }}>
@@ -20,7 +19,6 @@ export default function TokenCard({ data, position, onRefresh, isAdmin }) {
   const rec = data.recommendation || {};
   const divergence = data.divergence;
   const activeTimeframes = Object.entries(data.timeframes || {}).filter(([_, v]) => v.rsi !== null);
-  const hasPosition = !!position;
 
   async function removeToken(symbol) {
     if (!confirm(`Eliminar ${symbol} de los tokens trackeados?`)) return;
@@ -43,7 +41,7 @@ export default function TokenCard({ data, position, onRefresh, isAdmin }) {
       border: `1px solid ${
         divergence?.bullish ? 'var(--green)' :
         divergence?.bearish ? 'var(--red)' :
-        hasPosition ? 'var(--green)' : 'var(--surface2)'
+        'var(--surface2)'
       }`,
       position: 'relative',
       transition: 'border-color 0.2s',
@@ -65,9 +63,7 @@ export default function TokenCard({ data, position, onRefresh, isAdmin }) {
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
         <div>
-          <h3 style={{ fontSize: '1.1rem', fontWeight: 600 }}>
-            {data.symbol} {hasPosition && <span style={{ color: 'var(--green)', fontSize: '0.7rem' }}>EN POSICION</span>}
-          </h3>
+          <h3 style={{ fontSize: '1.1rem', fontWeight: 600 }}>{data.symbol}</h3>
           <div style={{ color: 'var(--text-dim)', fontSize: '0.8rem' }}>{data.name || ''}</div>
         </div>
         <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -82,30 +78,47 @@ export default function TokenCard({ data, position, onRefresh, isAdmin }) {
         </div>
       </div>
 
-      {/* RSI Gauge + Recommendation */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
-        <RSIGauge rsi={primaryRSI} timeframe={primaryTF} />
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: '1rem', fontWeight: 700, color: rec.color || 'inherit' }}>{rec.label || 'N/A'}</div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>{rec.reason || ''}</div>
+      {/* RSI Gauge + Timeframe tabs */}
+      {activeTimeframes.length > 0 ? (
+        <TokenTimeframes timeframes={activeTimeframes} primaryRSI={primaryRSI} primaryTF={primaryTF} rec={rec} />
+      ) : (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
+          <RSIGauge rsi={primaryRSI} timeframe={primaryTF} />
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: '1rem', fontWeight: 700, color: rec.color || 'inherit' }}>{rec.label || 'N/A'}</div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>{rec.reason || ''}</div>
+          </div>
         </div>
-      </div>
-
-      {/* Timeframe tabs */}
-      {activeTimeframes.length > 0 && <TimeframeTabs timeframes={activeTimeframes} />}
-
-      {/* Trade panel */}
-      <TradePanel symbol={data.symbol} position={position} onTrade={onRefresh} />
+      )}
     </div>
   );
 }
 
-function TimeframeTabs({ timeframes }) {
+function TokenTimeframes({ timeframes, primaryRSI, primaryTF, rec }) {
   const [activeIdx, setActiveIdx] = useState(0);
   const [_, tfData] = timeframes[activeIdx] || [];
+  const activeRSI = tfData?.rsi ?? primaryRSI;
+  const activeTF = timeframes[activeIdx]?.[0] || primaryTF;
+
+  let label, reason, recColor;
+  if (activeRSI <= 20) { label = 'Sobreventa Extrema'; reason = 'RSI muy bajo, posible rebote fuerte'; recColor = 'var(--green)'; }
+  else if (activeRSI <= 30) { label = 'Sobreventa'; reason = 'RSI en zona de sobreventa'; recColor = 'var(--green)'; }
+  else if (activeRSI <= 40) { label = 'Zona de compra'; reason = 'RSI bajando, posible oportunidad'; recColor = 'var(--orange)'; }
+  else if (activeRSI <= 60) { label = 'Neutral'; reason = 'RSI en zona neutral'; recColor = 'var(--text-dim)'; }
+  else if (activeRSI <= 70) { label = 'Zona de venta'; reason = 'RSI subiendo, precaucion'; recColor = 'var(--yellow)'; }
+  else if (activeRSI <= 80) { label = 'Sobrecompra'; reason = 'RSI en zona de sobrecompra'; recColor = 'var(--red)'; }
+  else { label = 'Sobrecompra Extrema'; reason = 'RSI muy alto, posible correccion'; recColor = 'var(--red)'; }
 
   return (
-    <div>
+    <>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
+        <RSIGauge rsi={activeRSI} timeframe={activeTF} />
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: '1rem', fontWeight: 700, color: recColor }}>{label}</div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>{reason}</div>
+        </div>
+      </div>
+
       <div style={{ display: 'flex', gap: 4, marginBottom: '0.5rem' }}>
         {timeframes.map(([tf, d], i) => (
           <button key={tf} onClick={() => setActiveIdx(i)}
@@ -126,7 +139,7 @@ function TimeframeTabs({ timeframes }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', color: 'var(--text-dim)' }}>
         <span style={{ color: 'var(--green)' }}>30</span><span>50</span><span style={{ color: 'var(--red)' }}>70</span>
       </div>
-    </div>
+    </>
   );
 }
 
