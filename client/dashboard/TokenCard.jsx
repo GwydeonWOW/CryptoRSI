@@ -119,7 +119,7 @@ function TokenTimeframes({ timeframes, primaryRSI, primaryTF, rec }) {
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 4, marginBottom: '0.5rem' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: '0.5rem' }}>
         {timeframes.map(([tf, d], i) => (
           <button key={tf} onClick={() => setActiveIdx(i)}
             style={{
@@ -128,10 +128,11 @@ function TokenTimeframes({ timeframes, primaryRSI, primaryTF, rec }) {
               color: i === activeIdx ? 'var(--text)' : 'var(--text-dim)',
               cursor: 'pointer', fontSize: '0.75rem', fontWeight: 500,
               display: 'flex', alignItems: 'center', gap: 4,
+              whiteSpace: 'nowrap',
             }}>
             {tf} <span style={{ color: getRSIColor(d.rsi) }}>{d.rsi?.toFixed(1)}</span>
-            {d.divergence?.bullish && <span style={{ color: 'var(--green)', fontSize: '0.6rem' }}>-BULL</span>}
-            {d.divergence?.bearish && <span style={{ color: 'var(--red)', fontSize: '0.6rem' }}>-BEAR</span>}
+            {d.divergence?.bullish && <span style={{ color: 'var(--green)', fontSize: '0.55rem', fontWeight: 600 }}>-B</span>}
+            {d.divergence?.bearish && <span style={{ color: 'var(--red)', fontSize: '0.55rem', fontWeight: 600 }}>-S</span>}
           </button>
         ))}
       </div>
