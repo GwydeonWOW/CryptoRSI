@@ -5,8 +5,11 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
-// Secret key - in production use env var
-const JWT_SECRET = process.env.JWT_SECRET || 'cryptorsi_jwt_secret_key_2026';
+// Secret key - MUST be set via env var or settings UI
+const JWT_SECRET = process.env.JWT_SECRET || (() => {
+  console.warn('WARNING: JWT_SECRET not set. Using insecure default. Set it in .env or Settings UI.');
+  return 'cryptorsi_insecure_default_change_me';
+})();
 const JWT_EXPIRES = '7d';
 
 // ============================================================

@@ -1,28 +1,27 @@
 /**
  * Telegram Bot Notifications + Command Handler
+ * Reads botToken and chatId from the settings store (configured via web UI).
  */
 
 const fetch = require('node-fetch');
 
-const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '8728037006:AAHaIG7abTWXa_tDeZ2Wse0U0veByBodtf0';
-const CHAT_ID = process.env.TELEGRAM_CHAT_ID || '-5194984384';
-
-const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
+const TELEGRAM_API_BASE = 'https://api.telegram.org/bot';
 
 // Track which signals were already sent to avoid spamming
 const sentSignals = new Map();
-const NOTIFY_COOLDOWN_MS = 4 * 60 * 60 * 1000; // 4 hours
 
 let lastUpdateId = 0;
 let pollingActive = false;
 
-async function sendTelegramMessage(text, chatId) {
+async function sendTelegramMessage(text, chatId, botToken) {
+  if (!botToken || !chatId) return false;
+
   try {
-    const res = await fetch(`${TELEGRAM_API}/sendMessage`, {
+    const res = await fetch(`${TELEGRAM_API_BASE}${botToken}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        chat_id: chatId || CHAT_ID,
+        chat_id: chatId,
         text,
         parse_mode: 'HTML',
         disable_web_page_preview: true,
@@ -41,13 +40,23 @@ async function sendTelegramMessage(text, chatId) {
 // Bot command polling - listens for /rsi command
 // ============================================================
 
-function startBotPolling(getRSIForAllTokens) {
+function startBotPolling(getRSIForAllTokens, getSettings) {
   if (pollingActive) return;
   pollingActive = true;
 
   async function poll() {
+    const settings = getSettings();
+    const botToken = settings?.telegram?.botToken || process.env.TELEGRAM_BOT_TOKEN;
+    const chatId = settings?.telegram?.chatId || process.env.TELEGRAM_CHAT_ID;
+
+    if (!botToken) {
+      // No token configured, retry later
+      setTimeout(poll, 30000);
+      return;
+    }
+
     try {
-      const res = await fetch(`${TELEGRAM_API}/getUpdates?offset=${lastUpdateId + 1}&timeout=30&allowed_updates=["message"]`);
+      const res = await fetch(`${TELEGRAM_API_BASE}${botToken}/getUpdates?offset=${lastUpdateId + 1}&timeout=30&allowed_updates=["message"]`);
       const data = await res.json();
 
       if (!data.ok || !data.result) {
@@ -61,31 +70,31 @@ function startBotPolling(getRSIForAllTokens) {
         const msg = update.message;
         if (!msg || !msg.text) continue;
 
-        const chatId = msg.chat.id.toString();
+        const incomingChatId = msg.chat.id.toString();
         const text = msg.text.trim();
 
         // /rsi command
         if (text === '/rsi' || text === '/rsi@' + (msg.from?.username || '')) {
-          await handleRSICommand(chatId, getRSIForAllTokens);
+          await handleRSICommand(incomingChatId, botToken, getRSIForAllTokens);
         }
       }
     } catch (e) {
       console.error('Telegram poll error:', e.message);
     }
 
-    if (pollingActive) setTimeout(poll, 1000);
+    if (pollingActive) setTimeout(poll, 3000);
   }
 
   poll();
-  console.log(`Telegram bot polling started (/rsi command available) | Chat ID: ${CHAT_ID} | Token: ${BOT_TOKEN ? BOT_TOKEN.slice(0, 10) + '...' : 'NOT SET'}`);
+  console.log('Telegram bot polling started (configured via Settings UI)');
 }
 
-async function handleRSICommand(chatId, getRSIForAllTokens) {
+async function handleRSICommand(chatId, botToken, getRSIForAllTokens) {
   try {
     const tokens = await getRSIForAllTokens();
 
     if (!tokens || tokens.length === 0) {
-      await sendTelegramMessage('No hay tokens trackeados.', chatId);
+      await sendTelegramMessage('No hay tokens trackeados.', chatId, botToken);
       return;
     }
 
@@ -98,11 +107,11 @@ async function handleRSICommand(chatId, getRSIForAllTokens) {
       }
 
       const rsi = token.primaryRSI;
-      let emoji = '⚪'; // neutral
-      if (rsi <= 30) emoji = '🟢'; // buy
-      else if (rsi >= 70) emoji = '🔴'; // sell
-      else if (rsi <= 40) emoji = '🟡'; // approaching buy
-      else if (rsi >= 60) emoji = '🟠'; // approaching sell
+      let emoji = '⚪';
+      if (rsi <= 30) emoji = '🟢';
+      else if (rsi >= 70) emoji = '🔴';
+      else if (rsi <= 40) emoji = '🟡';
+      else if (rsi >= 60) emoji = '🟠';
 
       const price = token.price?.toLocaleString('en-US', { maximumFractionDigits: 2 }) || '?';
       const action = token.recommendation?.action || '-';
@@ -120,17 +129,16 @@ async function handleRSICommand(chatId, getRSIForAllTokens) {
 
     text += `🔄 Actualizado: ${new Date().toLocaleString('es-ES')}`;
 
-    // Telegram message limit is 4096 chars, split if needed
     if (text.length > 4000) {
       const chunks = splitMessage(text, 4000);
       for (const chunk of chunks) {
-        await sendTelegramMessage(chunk, chatId);
+        await sendTelegramMessage(chunk, chatId, botToken);
       }
     } else {
-      await sendTelegramMessage(text, chatId);
+      await sendTelegramMessage(text, chatId, botToken);
     }
   } catch (e) {
-    await sendTelegramMessage(`Error obteniendo RSI: ${e.message}`, chatId);
+    await sendTelegramMessage(`Error obteniendo RSI: ${e.message}`, chatId, botToken);
   }
 }
 
@@ -153,11 +161,16 @@ function splitMessage(text, maxLen) {
 
 // ============================================================
 // RSI Signal notifications (from scheduler)
+// Uses alert config from settings store
 // ============================================================
 
-async function checkAndNotify(rsiDataArray) {
-  if (!BOT_TOKEN || !CHAT_ID) return;
+async function checkAndNotify(rsiDataArray, settings) {
+  const { botToken, chatId, enabled } = settings.telegram || {};
+  if (!enabled || !botToken || !chatId) return;
 
+  const alertGeneric = settings.alerts?.generic || {};
+  const tokenAlerts = settings.alerts?.tokens || {};
+  const cooldownMs = (alertGeneric.cooldownMinutes || 240) * 60 * 1000;
   const now = Date.now();
 
   for (const token of rsiDataArray) {
@@ -171,11 +184,14 @@ async function checkAndNotify(rsiDataArray) {
     const rsi15m = token.timeframes?.['15m']?.rsi;
     const priceStr = price?.toLocaleString('en-US', { maximumFractionDigits: 2 }) || '?';
 
-    // Bullish divergence signal (priority) — solo si RSI está en zona de compra (≤40)
-    if (divergence?.bullish && primaryRSI <= 40) {
+    // Merge generic + per-token alert config
+    const alertConfig = { ...alertGeneric, ...(tokenAlerts[symbol] || {}) };
+
+    // Bullish divergence
+    if (alertConfig.divergenceBullish && divergence?.bullish && primaryRSI <= 40) {
       const key = `bull:${symbol}`;
       const lastSent = sentSignals.get(key);
-      if (lastSent && now - lastSent < NOTIFY_COOLDOWN_MS) continue;
+      if (lastSent && now - lastSent < cooldownMs) continue;
 
       const strengthLabel = divergence.strength === 'strong' ? 'FUERTE' : divergence.strength === 'normal' ? 'Normal' : 'Debil';
       const text =
@@ -188,15 +204,15 @@ async function checkAndNotify(rsiDataArray) {
         `   15m: ${rsi15m?.toFixed(1) || '-'}  |  1H: ${rsi1h?.toFixed(1) || '-'}  |  4H: ${rsi4h?.toFixed(1) || '-'}  |  1D: ${rsi1d?.toFixed(1) || '-'}\n\n` +
         `⚡ Señal de compra: la presion vendedora se debilita. Posible rebote alcista.`;
 
-      const sent = await sendTelegramMessage(text);
+      const sent = await sendTelegramMessage(text, chatId, botToken);
       if (sent) sentSignals.set(key, now);
     }
 
-    // Bearish divergence signal (priority) — solo si RSI está en zona de venta (≥60)
-    if (divergence?.bearish && primaryRSI >= 60) {
+    // Bearish divergence
+    if (alertConfig.divergenceBearish && divergence?.bearish && primaryRSI >= 60) {
       const key = `bear:${symbol}`;
       const lastSent = sentSignals.get(key);
-      if (lastSent && now - lastSent < NOTIFY_COOLDOWN_MS) continue;
+      if (lastSent && now - lastSent < cooldownMs) continue;
 
       const strengthLabel = divergence.strength === 'strong' ? 'FUERTE' : divergence.strength === 'normal' ? 'Normal' : 'Debil';
       const text =
@@ -209,40 +225,41 @@ async function checkAndNotify(rsiDataArray) {
         `   15m: ${rsi15m?.toFixed(1) || '-'}  |  1H: ${rsi1h?.toFixed(1) || '-'}  |  4H: ${rsi4h?.toFixed(1) || '-'}  |  1D: ${rsi1d?.toFixed(1) || '-'}\n\n` +
         `⚠️ Señal de venta: la presion compradora se debilita. Posible correccion bajista.`;
 
-      const sent = await sendTelegramMessage(text);
+      const sent = await sendTelegramMessage(text, chatId, botToken);
       if (sent) sentSignals.set(key, now);
     }
 
-    // Fallback: classic RSI signals (only if no divergence was detected)
-    if (!divergence?.bullish && !divergence?.bearish && primaryRSI <= 30) {
+    // RSI Oversold (only if no divergence detected)
+    if (!divergence?.bullish && !divergence?.bearish && primaryRSI <= alertConfig.rsiOversold) {
       const key = `buy:${symbol}`;
       const lastSent = sentSignals.get(key);
-      if (lastSent && now - lastSent < NOTIFY_COOLDOWN_MS) continue;
+      if (lastSent && now - lastSent < cooldownMs) continue;
 
       const text =
         `🟢 <b>SOBREVENTA</b> — ${name || symbol}\n\n` +
         `📊 RSI: <b>${primaryRSI.toFixed(1)}</b> (${token.primaryTimeframe || '-'})\n` +
         `💰 Precio: <b>$${priceStr}</b>\n\n` +
         `⏱ 15m: ${rsi15m?.toFixed(1) || '-'}  |  1H: ${rsi1h?.toFixed(1) || '-'}  |  4H: ${rsi4h?.toFixed(1) || '-'}  |  1D: ${rsi1d?.toFixed(1) || '-'}\n\n` +
-        `⚡ RSI en zona de sobreventa (≤30). Sin divergencia detectada.`;
+        `⚡ RSI en zona de sobreventa (≤${alertConfig.rsiOversold}). Sin divergencia detectada.`;
 
-      const sent = await sendTelegramMessage(text);
+      const sent = await sendTelegramMessage(text, chatId, botToken);
       if (sent) sentSignals.set(key, now);
     }
 
-    if (!divergence?.bullish && !divergence?.bearish && primaryRSI >= 70) {
+    // RSI Overbought (only if no divergence detected)
+    if (!divergence?.bullish && !divergence?.bearish && primaryRSI >= alertConfig.rsiOverbought) {
       const key = `sell:${symbol}`;
       const lastSent = sentSignals.get(key);
-      if (lastSent && now - lastSent < NOTIFY_COOLDOWN_MS) continue;
+      if (lastSent && now - lastSent < cooldownMs) continue;
 
       const text =
         `🔴 <b>SOBRECOMPRA</b> — ${name || symbol}\n\n` +
         `📊 RSI: <b>${primaryRSI.toFixed(1)}</b> (${token.primaryTimeframe || '-'})\n` +
         `💰 Precio: <b>$${priceStr}</b>\n\n` +
         `⏱ 15m: ${rsi15m?.toFixed(1) || '-'}  |  1H: ${rsi1h?.toFixed(1) || '-'}  |  4H: ${rsi4h?.toFixed(1) || '-'}  |  1D: ${rsi1d?.toFixed(1) || '-'}\n\n` +
-        `⚠️ RSI en zona de sobrecompra (≥70). Sin divergencia detectada.`;
+        `⚠️ RSI en zona de sobrecompra (≥${alertConfig.rsiOverbought}). Sin divergencia detectada.`;
 
-      const sent = await sendTelegramMessage(text);
+      const sent = await sendTelegramMessage(text, chatId, botToken);
       if (sent) sentSignals.set(key, now);
     }
   }

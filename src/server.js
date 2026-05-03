@@ -7,7 +7,9 @@ const { loadTokens, addToken, removeToken } = require('./config');
 const { openPosition, closePosition, getOpenPositions, getHistory, getStats } = require('./trades');
 const { getMarketAnalysis } = require('./futures');
 const { checkAndNotify, startBotPolling } = require('./telegram');
+const { checkAndNotifyDiscord, sendDiscordMessage } = require('./discord');
 const { authMiddleware, adminMiddleware, generateToken, verifyPassword } = require('./auth');
+const { loadSettings, saveSettings, getAlertConfig, setTokenAlerts, removeTokenAlerts, getMaskedSettings } = require('./settings');
 const { ensureAdmin, listUsers, getUserByUsername, createUser, deleteUser, updateUser } = require('./users');
 const {
   saveRSISnapshot, getRSIHistory,
@@ -415,6 +417,90 @@ app.get('/api/history/prices/:symbol', (req, res) => {
 });
 
 // ============================================================
+// Settings Routes (admin only)
+// ============================================================
+
+/**
+ * GET /api/settings - Get all settings (secrets masked)
+ */
+app.get('/api/settings', authMiddleware, adminMiddleware, (req, res) => {
+  res.json(getMaskedSettings());
+});
+
+/**
+ * PUT /api/settings - Update settings (admin only)
+ */
+app.put('/api/settings', authMiddleware, adminMiddleware, (req, res) => {
+  const updated = saveSettings(req.body);
+  res.json({ success: true, settings: updated });
+});
+
+/**
+ * POST /api/settings/test/telegram - Send test Telegram message
+ */
+app.post('/api/settings/test/telegram', authMiddleware, adminMiddleware, async (req, res) => {
+  const { chatId, botToken } = req.body;
+  const currentSettings = loadSettings();
+  const token = botToken || currentSettings.telegram.botToken;
+  const chat = chatId || currentSettings.telegram.chatId;
+
+  if (!token || !chat) {
+    return res.status(400).json({ error: 'Configura Bot Token y Chat ID primero' });
+  }
+
+  const { sendTelegramMessage } = require('./telegram');
+  const sent = await sendTelegramMessage('✅ Test desde CryptoRSI - Telegram configurado correctamente!', chat, token);
+  if (sent) {
+    res.json({ success: true, message: 'Mensaje de prueba enviado' });
+  } else {
+    res.status(500).json({ error: 'Error enviando mensaje. Verifica el token y chat ID.' });
+  }
+});
+
+/**
+ * POST /api/settings/test/discord - Send test Discord message
+ */
+app.post('/api/settings/test/discord', authMiddleware, adminMiddleware, async (req, res) => {
+  const { webhookUrl } = req.body;
+  const url = webhookUrl || loadSettings().discord.webhookUrl;
+
+  if (!url) {
+    return res.status(400).json({ error: 'Configura el Webhook URL primero' });
+  }
+
+  const sent = await sendDiscordMessage('✅ Test desde CryptoRSI - Discord configurado correctamente!', url);
+  if (sent) {
+    res.json({ success: true, message: 'Mensaje de prueba enviado' });
+  } else {
+    res.status(500).json({ error: 'Error enviando mensaje. Verifica el Webhook URL.' });
+  }
+});
+
+/**
+ * GET /api/settings/alerts/:symbol - Get merged alert config for a token
+ */
+app.get('/api/settings/alerts/:symbol', authMiddleware, adminMiddleware, (req, res) => {
+  const config = getAlertConfig(req.params.symbol);
+  res.json(config);
+});
+
+/**
+ * PUT /api/settings/alerts/:symbol - Set per-token alert overrides
+ */
+app.put('/api/settings/alerts/:symbol', authMiddleware, adminMiddleware, (req, res) => {
+  const result = setTokenAlerts(req.params.symbol, req.body);
+  res.json({ success: true, settings: result });
+});
+
+/**
+ * DELETE /api/settings/alerts/:symbol - Remove per-token overrides
+ */
+app.delete('/api/settings/alerts/:symbol', authMiddleware, adminMiddleware, (req, res) => {
+  const result = removeTokenAlerts(req.params.symbol);
+  res.json({ success: true, settings: result });
+});
+
+// ============================================================
 // SPA Fallback - serve index.html for all non-API routes
 // ============================================================
 
@@ -553,7 +639,10 @@ async function collectSnapshot() {
       if (extremes.length > 0) {
         console.log(`  RSI extremes: ${extremes.map(t => `${t.symbol}(${t.primaryRSI?.toFixed(1)})`).join(', ')}`);
       }
-      checkAndNotify(rsiDataArray);
+      // Send notifications via Telegram and Discord
+      const settings = loadSettings();
+      checkAndNotify(rsiDataArray, settings);
+      checkAndNotifyDiscord(rsiDataArray, settings);
 
       // Save price snapshot
       const prices = rsiDataArray.map(t => ({ symbol: t.symbol, price: t.price }));
@@ -585,7 +674,7 @@ app.listen(PORT, async () => {
   await ensureAdmin();
 
   // Start Telegram bot polling for /rsi command
-  startBotPolling(fetchAllRSI);
+  startBotPolling(fetchAllRSI, loadSettings);
 
   // Collect initial snapshot after 30s (let server warm up)
   setTimeout(collectSnapshot, 30000);
