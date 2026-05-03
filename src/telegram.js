@@ -167,10 +167,9 @@ function splitMessage(text, maxLen) {
 async function checkAndNotify(rsiDataArray, settings) {
   const tg = settings.telegram || {};
   const webEnabled = tg.enabled && tg.botToken && tg.chatId;
-  const backupEnabled = tg.backupEnabled !== false;
   const backupToken = process.env.TELEGRAM_BOT_TOKEN;
   const backupChatId = process.env.TELEGRAM_CHAT_ID;
-  const useBackup = backupEnabled && backupToken && backupChatId;
+  const useBackup = !!(backupToken && backupChatId);
 
   if (!webEnabled && !useBackup) return;
 

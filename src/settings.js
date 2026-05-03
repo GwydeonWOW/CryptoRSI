@@ -12,7 +12,6 @@ const DEFAULT_SETTINGS = {
     botToken: '',
     chatId: '',
     enabled: false,
-    backupEnabled: true,
   },
   discord: {
     webhookUrl: '',
