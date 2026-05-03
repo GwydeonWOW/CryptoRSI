@@ -190,7 +190,6 @@
     }
 
     .token-card:hover { border-color: var(--blue); }
-    .token-card.has-position { border-color: var(--green); }
 
     .token-card .card-header {
       display: flex;
@@ -323,50 +322,6 @@
       margin-top: 0.25rem;
     }
 
-    .trade-panel {
-      margin-top: 1rem;
-      padding-top: 0.75rem;
-      border-top: 1px solid var(--surface2);
-    }
-
-    .trade-actions {
-      display: flex;
-      gap: 0.5rem;
-      align-items: center;
-    }
-
-    .trade-actions input {
-      width: 80px;
-      font-size: 0.8rem;
-      padding: 0.35rem 0.5rem;
-    }
-
-    .position-info {
-      margin-top: 0.6rem;
-      padding: 0.6rem;
-      background: rgba(34, 197, 94, 0.08);
-      border: 1px solid rgba(34, 197, 94, 0.2);
-      border-radius: 8px;
-    }
-
-    .position-info.negative {
-      background: rgba(239, 68, 68, 0.08);
-      border-color: rgba(239, 68, 68, 0.2);
-    }
-
-    .position-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-size: 0.8rem;
-      line-height: 1.6;
-    }
-
-    .position-row .label { color: var(--text-dim); }
-    .position-row .value { font-weight: 600; }
-    .pnl-positive { color: var(--green); }
-    .pnl-negative { color: var(--red); }
-
     .token-error {
       color: var(--red);
       font-size: 0.8rem;
@@ -411,57 +366,6 @@
 
     .legend-item { display: flex; align-items: center; gap: 0.3rem; }
     .legend-dot { width: 8px; height: 8px; border-radius: 50%; }
-
-    .stats-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-      gap: 1rem;
-      margin-bottom: 1.5rem;
-    }
-
-    .stat-card {
-      background: var(--surface);
-      border-radius: 10px;
-      padding: 1rem;
-      border: 1px solid var(--surface2);
-      text-align: center;
-    }
-
-    .stat-card .stat-value {
-      font-size: 1.4rem;
-      font-weight: 700;
-      margin-top: 0.25rem;
-    }
-
-    .stat-card .stat-label {
-      font-size: 0.75rem;
-      color: var(--text-dim);
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-    }
-
-    .history-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 0.8rem;
-    }
-
-    .history-table th {
-      text-align: left;
-      padding: 0.6rem 0.5rem;
-      border-bottom: 1px solid var(--surface2);
-      color: var(--text-dim);
-      font-weight: 500;
-      font-size: 0.75rem;
-      text-transform: uppercase;
-    }
-
-    .history-table td {
-      padding: 0.6rem 0.5rem;
-      border-bottom: 1px solid rgba(51,65,85,0.5);
-    }
-
-    .history-table tr:hover td { background: rgba(51,65,85,0.3); }
 
     .history-empty {
       text-align: center;
@@ -803,7 +707,6 @@
       .tokens-grid { grid-template-columns: 1fr; }
       .header { padding: 1rem; }
       .container { padding: 1rem; }
-      .stats-grid { grid-template-columns: repeat(2, 1fr); }
       .market-charts-grid { grid-template-columns: 1fr; }
       .signal-grid { grid-template-columns: 1fr; }
     }
@@ -1121,8 +1024,7 @@
     <button class="main-tab active" data-tab="dashboard" onclick="switchMainTab(this, 'dashboard')">Dashboard</button>
     <button class="main-tab" data-tab="market" onclick="switchMainTab(this, 'market')">Analisis de Mercado</button>
     <button class="main-tab" data-tab="historicos" onclick="switchMainTab(this, 'historicos')">Historicos</button>
-    <button class="main-tab" data-tab="history" onclick="switchMainTab(this, 'history')">Historial Trades</button>
-    <button class="main-tab" data-tab="settings" id="settingsTab" style="display:none" onclick="switchMainTab(this, 'settings')">Configuracion</button>
+    <button class="main-tab" data-tab="settings" id="settingsTab" onclick="switchMainTab(this, 'settings')">Configuracion</button>
   </div>
 
   <!-- Dashboard Tab -->
@@ -1168,13 +1070,6 @@
         <div id="histSentimentChart" class="hist-chart-container"></div>
       </div>
     </div>
-  </div>
-
-  <!-- History Tab -->
-  <div id="tab-history" class="tab-content">
-    <div id="historyAuthMsg" class="history-empty" style="display:none">Inicia sesion para ver tu historial de trades.</div>
-    <div id="statsGrid" class="stats-grid"></div>
-    <div id="historyTable"></div>
   </div>
 
   <!-- Market Analysis Tab -->
@@ -1358,7 +1253,6 @@
 <script>
 const API = '';
 let allData = [];
-let openPositions = {};
 let refreshTimer = null;
 let currentIntervalMin = 5;
 let authToken = localStorage.getItem('cryptoRSI_token') || null;
@@ -1407,7 +1301,6 @@ async function checkAuth() {
 function showLoginState(loggedIn) {
   const loginBtn = document.getElementById('loginBtn');
   const userBadge = document.getElementById('userBadge');
-  const settingsTab = document.getElementById('settingsTab');
   const overlay = document.getElementById('loginOverlay');
 
   if (loggedIn && currentUser) {
@@ -1415,13 +1308,11 @@ function showLoginState(loggedIn) {
     loginBtn.onclick = doLogout;
     userBadge.textContent = currentUser.displayName || currentUser.username;
     userBadge.style.display = 'inline';
-    settingsTab.style.display = currentUser.role === 'admin' ? '' : 'none';
     overlay.style.display = 'none';
   } else {
     loginBtn.textContent = 'Login';
     loginBtn.onclick = showLogin;
     userBadge.style.display = 'none';
-    settingsTab.style.display = 'none';
   }
 }
 
@@ -1502,12 +1393,6 @@ function formatPrice(price) {
   return '$' + price.toFixed(8);
 }
 
-function formatPnl(pnl, pct) {
-  const cls = pnl >= 0 ? 'pnl-positive' : 'pnl-negative';
-  const sign = pnl >= 0 ? '+' : '';
-  return `<span class="${cls}">${sign}${pnl.toFixed(2)} (${sign}${pct.toFixed(2)}%)</span>`;
-}
-
 function timeAgo(dateStr) {
   const diff = Date.now() - new Date(dateStr).getTime();
   const mins = Math.floor(diff / 60000);
@@ -1550,53 +1435,6 @@ function renderRSIChart(history) {
   }).join('')}</div>`;
 }
 
-function renderPositionPanel(symbol) {
-  const pos = openPositions[symbol];
-  if (!pos) {
-    return `
-      <div class="trade-panel">
-        <div class="trade-actions">
-          <input type="number" id="amount-${symbol}" placeholder="$100" value="100" min="1" step="10" />
-          <button class="btn btn-green btn-sm" onclick="buyToken('${symbol}')">Comprar</button>
-        </div>
-      </div>`;
-  }
-
-  const pnl = pos.pnl || 0;
-  const pnlPct = pos.pnlPct || 0;
-  const isNeg = pnl < 0;
-  const pnlCls = isNeg ? 'pnl-negative' : 'pnl-positive';
-
-  return `
-    <div class="trade-panel">
-      <div class="position-info ${isNeg ? 'negative' : ''}">
-        <div class="position-row">
-          <span class="label">Entrada</span>
-          <span class="value">${formatPrice(pos.entryPrice)} <span style="color:var(--text-dim);font-size:0.7rem">(RSI: ${pos.rsiAtOpen ? pos.rsiAtOpen.toFixed(1) : 'N/A'})</span></span>
-        </div>
-        <div class="position-row">
-          <span class="label">Actual</span>
-          <span class="value">${formatPrice(pos.currentPrice)}</span>
-        </div>
-        <div class="position-row">
-          <span class="label">Invertido</span>
-          <span class="value">$${pos.amount.toFixed(2)}</span>
-        </div>
-        <div class="position-row">
-          <span class="label">PnL</span>
-          <span class="value ${pnlCls}">${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)} (${pnl >= 0 ? '+' : ''}${pnlPct.toFixed(2)}%)</span>
-        </div>
-        <div class="position-row">
-          <span class="label">Abierto</span>
-          <span class="value" style="font-size:0.7rem;color:var(--text-dim)">${timeAgo(pos.openedAt)}</span>
-        </div>
-      </div>
-      <div style="margin-top:0.5rem">
-        <button class="btn btn-danger btn-sm" onclick="sellToken('${symbol}')">Vender</button>
-      </div>
-    </div>`;
-}
-
 function renderTokenCard(data) {
   if (data.error) {
     return `
@@ -1616,14 +1454,13 @@ function renderTokenCard(data) {
   const rec = data.recommendation || {};
   const colorStyle = rec.color ? `color:${rec.color}` : '';
   const activeTimeframes = Object.entries(data.timeframes || {}).filter(([_, v]) => v.rsi !== null);
-  const hasPosition = !!openPositions[data.symbol];
 
   return `
-    <div class="token-card ${hasPosition ? 'has-position' : ''}">
+    <div class="token-card">
       <button class="remove-btn" onclick="removeToken('${data.symbol}')" title="Eliminar">&times;</button>
       <div class="card-header">
         <div class="token-info">
-          <h3>${data.symbol} ${hasPosition ? '<span style="color:var(--green);font-size:0.7rem">EN POSICION</span>' : ''}</h3>
+          <h3>${data.symbol}</h3>
           <div class="token-name">${data.name || ''}</div>
         </div>
         <div class="token-price">
@@ -1655,8 +1492,6 @@ function renderTokenCard(data) {
           <span style="color:var(--red)">70</span>
         </div>
       ` : '<div style="color:var(--text-dim);font-size:0.8rem">Sin datos suficientes</div>'}
-
-      ${renderPositionPanel(data.symbol)}
     </div>`;
 }
 
@@ -1670,138 +1505,13 @@ function switchMainTab(btn, tab) {
   btn.classList.add('active');
   document.getElementById(`tab-${tab}`).classList.add('active');
 
-  if (tab === 'history') loadHistory();
   if (tab === 'market') loadMarketAnalysis();
   if (tab === 'historicos') loadHistoricalData();
   if (tab === 'settings') loadSettings();
 }
 
 // ============================================================
-// Trading actions
-// ============================================================
-
-async function buyToken(symbol) {
-  if (!authToken) { showLogin(); return; }
-  const amountInput = document.getElementById(`amount-${symbol}`);
-  const amount = amountInput ? parseFloat(amountInput.value) || 100 : 100;
-
-  try {
-    const res = await fetchAuth('/api/trade/buy', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
-      body: JSON.stringify({ symbol, amount })
-    });
-    const data = await res.json();
-
-    if (data.success) {
-      await refreshAll();
-    } else {
-      alert(data.message || data.error);
-    }
-  } catch (e) {
-    alert('Error: ' + e.message);
-  }
-}
-
-async function sellToken(symbol) {
-  if (!authToken) { showLogin(); return; }
-  if (!confirm(`Vender posicion de ${symbol}?`)) return;
-
-  try {
-    const res = await fetchAuth('/api/trade/sell', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
-      body: JSON.stringify({ symbol })
-    });
-    const data = await res.json();
-
-    if (data.success) {
-      const t = data.trade;
-      const pnlSign = t.pnl >= 0 ? '+' : '';
-      alert(`${t.symbol} vendido!\nEntrada: ${formatPrice(t.entryPrice)}\nSalida: ${formatPrice(t.exitPrice)}\nPnL: ${pnlSign}$${t.pnl.toFixed(2)} (${pnlSign}${t.pnlPct.toFixed(2)}%)`);
-      await refreshAll();
-    } else {
-      alert(data.message || data.error);
-    }
-  } catch (e) {
-    alert('Error: ' + e.message);
-  }
-}
-
-// ============================================================
 // History & Stats
-// ============================================================
-
-async function loadHistory() {
-  if (!authToken) {
-    document.getElementById('historyAuthMsg').style.display = 'block';
-    document.getElementById('statsGrid').innerHTML = '';
-    document.getElementById('historyTable').innerHTML = '';
-    return;
-  }
-  document.getElementById('historyAuthMsg').style.display = 'none';
-
-  const [stats, history] = await Promise.all([
-    fetchJSON('/api/trade/stats'),
-    fetchJSON('/api/trade/history')
-  ]);
-
-  document.getElementById('statsGrid').innerHTML = `
-    <div class="stat-card">
-      <div class="stat-label">Total Trades</div>
-      <div class="stat-value">${stats.totalTrades}</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">Win Rate</div>
-      <div class="stat-value" style="color:${stats.winRate >= 50 ? 'var(--green)' : 'var(--red)'}">${stats.winRate.toFixed(0)}%</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">PnL Total</div>
-      <div class="stat-value" style="color:${stats.totalPnl >= 0 ? 'var(--green)' : 'var(--red)'}">
-        ${stats.totalPnl >= 0 ? '+' : ''}$${stats.totalPnl.toFixed(2)}
-      </div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">PnL Medio</div>
-      <div class="stat-value" style="color:${stats.avgPnlPct >= 0 ? 'var(--green)' : 'var(--red)'}">
-        ${stats.avgPnlPct >= 0 ? '+' : ''}${stats.avgPnlPct.toFixed(2)}%
-      </div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">Wins / Losses</div>
-      <div class="stat-value"><span style="color:var(--green)">${stats.wins}</span> / <span style="color:var(--red)">${stats.losses}</span></div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">Mejor Trade</div>
-      <div class="stat-value" style="font-size:1rem">${stats.bestTrade ? formatPnl(stats.bestTrade.pnl, stats.bestTrade.pnlPct) + ' (' + stats.bestTrade.symbol + ')' : 'N/A'}</div>
-    </div>
-  `;
-
-  if (history.length === 0) {
-    document.getElementById('historyTable').innerHTML = '<div class="history-empty">Aun no hay trades cerrados.</div>';
-    return;
-  }
-
-  const rows = history.sort((a, b) => new Date(b.closedAt) - new Date(a.closedAt)).map(t => `
-    <tr>
-      <td><strong>${t.symbol}</strong></td>
-      <td>${formatPrice(t.entryPrice)} <span style="color:var(--text-dim);font-size:0.7rem">(RSI:${t.rsiAtOpen ? t.rsiAtOpen.toFixed(0) : '-'})</span></td>
-      <td>${formatPrice(t.exitPrice)} <span style="color:var(--text-dim);font-size:0.7rem">(RSI:${t.rsiAtClose ? t.rsiAtClose.toFixed(0) : '-'})</span></td>
-      <td>$${t.amount.toFixed(0)}</td>
-      <td>${formatPnl(t.pnl, t.pnlPct)}</td>
-      <td style="color:var(--text-dim);font-size:0.7rem">${new Date(t.closedAt).toLocaleString('es-ES')}</td>
-    </tr>
-  `).join('');
-
-  document.getElementById('historyTable').innerHTML = `
-    <table class="history-table">
-      <thead>
-        <tr><th>Token</th><th>Entrada</th><th>Salida</th><th>Invertido</th><th>PnL</th><th>Fecha</th></tr>
-      </thead>
-      <tbody>${rows}</tbody>
-    </table>`;
-}
-
 // ============================================================
 // Timeframe switching
 // ============================================================
@@ -1813,8 +1523,54 @@ function switchTimeframe(btn, symbol, tf) {
 
   const tokenData = allData.find(d => d.symbol === symbol);
   if (tokenData && tokenData.timeframes && tokenData.timeframes[tf]) {
+    const tfData = tokenData.timeframes[tf];
+
+    // Update mini chart
     const chartDiv = card.querySelector('.tf-chart');
-    chartDiv.innerHTML = renderRSIChart(tokenData.timeframes[tf].rsiHistory || []);
+    chartDiv.innerHTML = renderRSIChart(tfData.rsiHistory || []);
+
+    // Update RSI gauge circle
+    const rsiMain = card.querySelector('.rsi-main');
+    if (rsiMain && tfData.rsi !== null && tfData.rsi !== undefined) {
+      const rsi = tfData.rsi;
+      const color = getRSIArcColor(rsi);
+      const pct = rsi / 100;
+      const r = 32;
+      const circ = 2 * Math.PI * r;
+      const dash = circ * pct;
+      const colorVal = getRSIColor(rsi);
+
+      const gaugeDiv = rsiMain.querySelector('.rsi-gauge');
+      if (gaugeDiv) {
+        gaugeDiv.querySelector('svg').innerHTML =
+          `<circle cx="40" cy="40" r="${r}" fill="none" stroke="#334155" stroke-width="6" />` +
+          `<circle cx="40" cy="40" r="${r}" fill="none" stroke="${color}" stroke-width="6" ` +
+          `stroke-dasharray="${dash} ${circ}" stroke-linecap="round" />`;
+        const valueDiv = gaugeDiv.querySelector('.rsi-value');
+        if (valueDiv) {
+          valueDiv.style.color = colorVal;
+          valueDiv.textContent = rsi.toFixed(1);
+        }
+      }
+
+      // Update recommendation text
+      const recDiv = rsiMain.querySelector('.rsi-recommendation');
+      if (recDiv) {
+        let label, reason, recColor;
+        if (rsi <= 20) { label = 'Sobreventa Extrema'; reason = 'RSI muy bajo, posible rebote fuerte'; recColor = 'var(--green)'; }
+        else if (rsi <= 30) { label = 'Sobreventa'; reason = 'RSI en zona de sobreventa'; recColor = 'var(--green)'; }
+        else if (rsi <= 40) { label = 'Zona de compra'; reason = 'RSI bajando, posible oportunidad'; recColor = 'var(--orange)'; }
+        else if (rsi <= 60) { label = 'Neutral'; reason = 'RSI en zona neutral'; recColor = 'var(--text-dim)'; }
+        else if (rsi <= 70) { label = 'Zona de venta'; reason = 'RSI subiendo, precaucion'; recColor = 'var(--yellow)'; }
+        else if (rsi <= 80) { label = 'Sobrecompra'; reason = 'RSI en zona de sobrecompra'; recColor = 'var(--red)'; }
+        else { label = 'Sobrecompra Extrema'; reason = 'RSI muy alto, posible correccion'; recColor = 'var(--red)'; }
+
+        const actionLabel = recDiv.querySelector('.action-label');
+        const actionReason = recDiv.querySelector('.action-reason');
+        if (actionLabel) { actionLabel.textContent = label; actionLabel.style.color = recColor; }
+        if (actionReason) actionReason.textContent = reason;
+      }
+    }
   }
 }
 
@@ -1833,15 +1589,7 @@ async function refreshAll() {
   grid.innerHTML = '';
 
   try {
-    const [rsiData, positions] = await Promise.all([
-      fetchJSON('/api/rsi'),
-      authToken ? fetchJSON('/api/trade/positions') : Promise.resolve([])
-    ]);
-
-    openPositions = {};
-    for (const pos of positions) {
-      openPositions[pos.symbol] = pos;
-    }
+    const rsiData = await fetchJSON('/api/rsi');
 
     allData = rsiData;
     grid.innerHTML = allData.map(renderTokenCard).join('');
