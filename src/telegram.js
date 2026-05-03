@@ -165,8 +165,14 @@ function splitMessage(text, maxLen) {
 // ============================================================
 
 async function checkAndNotify(rsiDataArray, settings) {
-  const { botToken, chatId, enabled } = settings.telegram || {};
-  if (!enabled || !botToken || !chatId) return;
+  const tg = settings.telegram || {};
+  const webEnabled = tg.enabled && tg.botToken && tg.chatId;
+  const backupEnabled = tg.backupEnabled !== false;
+  const backupToken = process.env.TELEGRAM_BOT_TOKEN;
+  const backupChatId = process.env.TELEGRAM_CHAT_ID;
+  const useBackup = backupEnabled && backupToken && backupChatId;
+
+  if (!webEnabled && !useBackup) return;
 
   const alertGeneric = settings.alerts?.generic || {};
   const tokenAlerts = settings.alerts?.tokens || {};
@@ -184,10 +190,7 @@ async function checkAndNotify(rsiDataArray, settings) {
     const rsi15m = token.timeframes?.['15m']?.rsi;
     const priceStr = price?.toLocaleString('en-US', { maximumFractionDigits: 2 }) || '?';
 
-    // Merge generic + per-token alert config
     const alertConfig = { ...alertGeneric, ...(tokenAlerts[symbol] || {}) };
-
-    // Use configured alert timeframe, fallback to primaryRSI
     const alertTf = alertConfig.alertTimeframe || '1d';
     const alertRSI = token.timeframes?.[alertTf]?.rsi || token.primaryRSI;
 
@@ -208,8 +211,9 @@ async function checkAndNotify(rsiDataArray, settings) {
         `   15m: ${rsi15m?.toFixed(1) || '-'}  |  1H: ${rsi1h?.toFixed(1) || '-'}  |  4H: ${rsi4h?.toFixed(1) || '-'}  |  1D: ${rsi1d?.toFixed(1) || '-'}\n\n` +
         `⚡ Señal de compra: la presion vendedora se debilita. Posible rebote alcista.`;
 
-      const sent = await sendTelegramMessage(text, chatId, botToken);
-      if (sent) sentSignals.set(key, now);
+      if (webEnabled) await sendTelegramMessage(text, tg.chatId, tg.botToken);
+      if (useBackup) await sendTelegramMessage(text, backupChatId, backupToken);
+      sentSignals.set(key, now);
     }
 
     // Bearish divergence
@@ -229,11 +233,12 @@ async function checkAndNotify(rsiDataArray, settings) {
         `   15m: ${rsi15m?.toFixed(1) || '-'}  |  1H: ${rsi1h?.toFixed(1) || '-'}  |  4H: ${rsi4h?.toFixed(1) || '-'}  |  1D: ${rsi1d?.toFixed(1) || '-'}\n\n` +
         `⚠️ Señal de venta: la presion compradora se debilita. Posible correccion bajista.`;
 
-      const sent = await sendTelegramMessage(text, chatId, botToken);
-      if (sent) sentSignals.set(key, now);
+      if (webEnabled) await sendTelegramMessage(text, tg.chatId, tg.botToken);
+      if (useBackup) await sendTelegramMessage(text, backupChatId, backupToken);
+      sentSignals.set(key, now);
     }
 
-    // RSI Oversold (only if no divergence detected)
+    // RSI Oversold
     if (!divergence?.bullish && !divergence?.bearish && alertRSI <= alertConfig.rsiOversold) {
       const key = `buy:${symbol}`;
       const lastSent = sentSignals.get(key);
@@ -246,11 +251,12 @@ async function checkAndNotify(rsiDataArray, settings) {
         `⏱ 15m: ${rsi15m?.toFixed(1) || '-'}  |  1H: ${rsi1h?.toFixed(1) || '-'}  |  4H: ${rsi4h?.toFixed(1) || '-'}  |  1D: ${rsi1d?.toFixed(1) || '-'}\n\n` +
         `⚡ RSI en zona de sobreventa (≤${alertConfig.rsiOversold}). Sin divergencia detectada.`;
 
-      const sent = await sendTelegramMessage(text, chatId, botToken);
-      if (sent) sentSignals.set(key, now);
+      if (webEnabled) await sendTelegramMessage(text, tg.chatId, tg.botToken);
+      if (useBackup) await sendTelegramMessage(text, backupChatId, backupToken);
+      sentSignals.set(key, now);
     }
 
-    // RSI Overbought (only if no divergence detected)
+    // RSI Overbought
     if (!divergence?.bullish && !divergence?.bearish && alertRSI >= alertConfig.rsiOverbought) {
       const key = `sell:${symbol}`;
       const lastSent = sentSignals.get(key);
@@ -263,8 +269,9 @@ async function checkAndNotify(rsiDataArray, settings) {
         `⏱ 15m: ${rsi15m?.toFixed(1) || '-'}  |  1H: ${rsi1h?.toFixed(1) || '-'}  |  4H: ${rsi4h?.toFixed(1) || '-'}  |  1D: ${rsi1d?.toFixed(1) || '-'}\n\n` +
         `⚠️ RSI en zona de sobrecompra (≥${alertConfig.rsiOverbought}). Sin divergencia detectada.`;
 
-      const sent = await sendTelegramMessage(text, chatId, botToken);
-      if (sent) sentSignals.set(key, now);
+      if (webEnabled) await sendTelegramMessage(text, tg.chatId, tg.botToken);
+      if (useBackup) await sendTelegramMessage(text, backupChatId, backupToken);
+      sentSignals.set(key, now);
     }
   }
 }

@@ -12,6 +12,7 @@ const DEFAULT_SETTINGS = {
     botToken: '',
     chatId: '',
     enabled: false,
+    backupEnabled: true,
   },
   discord: {
     webhookUrl: '',
@@ -104,6 +105,7 @@ function getMaskedSettings() {
       botToken: settings.telegram.botToken
         ? settings.telegram.botToken.slice(0, 6) + '...' + settings.telegram.botToken.slice(-4)
         : '',
+      envConfigured: !!(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID),
     },
     discord: {
       ...settings.discord,

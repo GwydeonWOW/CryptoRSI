@@ -99,15 +99,17 @@ function TelegramSection({ settings, onUpdate, onMsg }) {
   const [botToken, setBotToken] = useState('');
   const [chatId, setChatId] = useState('');
   const [enabled, setEnabled] = useState(tg.enabled);
+  const [backupEnabled, setBackupEnabled] = useState(tg.backupEnabled !== false);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     setEnabled(tg.enabled);
-  }, [tg.enabled]);
+    setBackupEnabled(tg.backupEnabled !== false);
+  }, [tg.enabled, tg.backupEnabled]);
 
   async function save() {
     setLoading(true);
-    const payload = { telegram: { enabled } };
+    const payload = { telegram: { enabled, backupEnabled } };
     if (botToken) payload.telegram.botToken = botToken;
     if (chatId) payload.telegram.chatId = chatId;
     try {
@@ -144,6 +146,22 @@ function TelegramSection({ settings, onUpdate, onMsg }) {
           placeholder={tg.chatId || '-100123456789'} style={{ width: 200 }} />
       </Row>
       <Row label="Habilitado"><Toggle checked={enabled} onChange={setEnabled} /></Row>
+      <div style={{ borderTop: '1px solid var(--surface2)', margin: '0.75rem 0', paddingTop: '0.75rem' }}>
+        <Row label="Respaldo (env vars)">
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <Toggle checked={backupEnabled} onChange={setBackupEnabled} />
+            {tg.envConfigured
+              ? <span style={{ fontSize: '0.7rem', color: 'var(--green)' }}>Credenciales configuradas</span>
+              : <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>Sin configurar en .env</span>
+            }
+          </div>
+        </Row>
+        {tg.envConfigured && backupEnabled && (
+          <p style={{ fontSize: '0.7rem', color: 'var(--text-dim)', marginTop: 4 }}>
+            Las alertas tambien se enviaran a las credenciales del servidor (.env). Funciona independientemente de la configuracion web.
+          </p>
+        )}
+      </div>
       <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
         <button className="btn btn-primary btn-sm" onClick={save} disabled={loading}>Guardar</button>
         <button className="btn btn-secondary btn-sm" onClick={test} disabled={loading}>Enviar Test</button>
