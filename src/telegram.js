@@ -176,7 +176,7 @@ async function checkAndNotify(rsiDataArray, settings) {
   for (const token of rsiDataArray) {
     if (!token.primaryRSI || !token.recommendation) continue;
 
-    const { symbol, name, price, primaryRSI, recommendation } = token;
+    const { symbol, name, price, recommendation } = token;
     const divergence = token.divergence;
     const rsi1d = token.timeframes?.['1d']?.rsi;
     const rsi4h = token.timeframes?.['4h']?.rsi;
@@ -187,8 +187,12 @@ async function checkAndNotify(rsiDataArray, settings) {
     // Merge generic + per-token alert config
     const alertConfig = { ...alertGeneric, ...(tokenAlerts[symbol] || {}) };
 
+    // Use configured alert timeframe, fallback to primaryRSI
+    const alertTf = alertConfig.alertTimeframe || '1d';
+    const alertRSI = token.timeframes?.[alertTf]?.rsi || token.primaryRSI;
+
     // Bullish divergence
-    if (alertConfig.divergenceBullish && divergence?.bullish && primaryRSI <= 40) {
+    if (alertConfig.divergenceBullish && divergence?.bullish && alertRSI <= 40) {
       const key = `bull:${symbol}`;
       const lastSent = sentSignals.get(key);
       if (lastSent && now - lastSent < cooldownMs) continue;
@@ -198,7 +202,7 @@ async function checkAndNotify(rsiDataArray, settings) {
         `[BULL] <b>DIVERGENCIA ALCISTA</b> — ${name || symbol}\n\n` +
         `Fuerza: <b>${strengthLabel}</b>\n` +
         `${divergence.reason || 'Precio baja pero RSI sube'}\n\n` +
-        `📊 RSI: <b>${primaryRSI.toFixed(1)}</b> (${token.primaryTimeframe || '-'})\n` +
+        `📊 RSI: <b>${alertRSI.toFixed(1)}</b> (${alertTf})\n` +
         `💰 Precio: <b>$${priceStr}</b>\n\n` +
         `RSI por timeframe:\n` +
         `   15m: ${rsi15m?.toFixed(1) || '-'}  |  1H: ${rsi1h?.toFixed(1) || '-'}  |  4H: ${rsi4h?.toFixed(1) || '-'}  |  1D: ${rsi1d?.toFixed(1) || '-'}\n\n` +
@@ -209,7 +213,7 @@ async function checkAndNotify(rsiDataArray, settings) {
     }
 
     // Bearish divergence
-    if (alertConfig.divergenceBearish && divergence?.bearish && primaryRSI >= 60) {
+    if (alertConfig.divergenceBearish && divergence?.bearish && alertRSI >= 60) {
       const key = `bear:${symbol}`;
       const lastSent = sentSignals.get(key);
       if (lastSent && now - lastSent < cooldownMs) continue;
@@ -219,7 +223,7 @@ async function checkAndNotify(rsiDataArray, settings) {
         `[BEAR] <b>DIVERGENCIA BAJISTA</b> — ${name || symbol}\n\n` +
         `Fuerza: <b>${strengthLabel}</b>\n` +
         `${divergence.reason || 'Precio sube pero RSI baja'}\n\n` +
-        `📊 RSI: <b>${primaryRSI.toFixed(1)}</b> (${token.primaryTimeframe || '-'})\n` +
+        `📊 RSI: <b>${alertRSI.toFixed(1)}</b> (${alertTf})\n` +
         `💰 Precio: <b>$${priceStr}</b>\n\n` +
         `RSI por timeframe:\n` +
         `   15m: ${rsi15m?.toFixed(1) || '-'}  |  1H: ${rsi1h?.toFixed(1) || '-'}  |  4H: ${rsi4h?.toFixed(1) || '-'}  |  1D: ${rsi1d?.toFixed(1) || '-'}\n\n` +
@@ -230,14 +234,14 @@ async function checkAndNotify(rsiDataArray, settings) {
     }
 
     // RSI Oversold (only if no divergence detected)
-    if (!divergence?.bullish && !divergence?.bearish && primaryRSI <= alertConfig.rsiOversold) {
+    if (!divergence?.bullish && !divergence?.bearish && alertRSI <= alertConfig.rsiOversold) {
       const key = `buy:${symbol}`;
       const lastSent = sentSignals.get(key);
       if (lastSent && now - lastSent < cooldownMs) continue;
 
       const text =
         `🟢 <b>SOBREVENTA</b> — ${name || symbol}\n\n` +
-        `📊 RSI: <b>${primaryRSI.toFixed(1)}</b> (${token.primaryTimeframe || '-'})\n` +
+        `📊 RSI: <b>${alertRSI.toFixed(1)}</b> (${alertTf})\n` +
         `💰 Precio: <b>$${priceStr}</b>\n\n` +
         `⏱ 15m: ${rsi15m?.toFixed(1) || '-'}  |  1H: ${rsi1h?.toFixed(1) || '-'}  |  4H: ${rsi4h?.toFixed(1) || '-'}  |  1D: ${rsi1d?.toFixed(1) || '-'}\n\n` +
         `⚡ RSI en zona de sobreventa (≤${alertConfig.rsiOversold}). Sin divergencia detectada.`;
@@ -247,14 +251,14 @@ async function checkAndNotify(rsiDataArray, settings) {
     }
 
     // RSI Overbought (only if no divergence detected)
-    if (!divergence?.bullish && !divergence?.bearish && primaryRSI >= alertConfig.rsiOverbought) {
+    if (!divergence?.bullish && !divergence?.bearish && alertRSI >= alertConfig.rsiOverbought) {
       const key = `sell:${symbol}`;
       const lastSent = sentSignals.get(key);
       if (lastSent && now - lastSent < cooldownMs) continue;
 
       const text =
         `🔴 <b>SOBRECOMPRA</b> — ${name || symbol}\n\n` +
-        `📊 RSI: <b>${primaryRSI.toFixed(1)}</b> (${token.primaryTimeframe || '-'})\n` +
+        `📊 RSI: <b>${alertRSI.toFixed(1)}</b> (${alertTf})\n` +
         `💰 Precio: <b>$${priceStr}</b>\n\n` +
         `⏱ 15m: ${rsi15m?.toFixed(1) || '-'}  |  1H: ${rsi1h?.toFixed(1) || '-'}  |  4H: ${rsi4h?.toFixed(1) || '-'}  |  1D: ${rsi1d?.toFixed(1) || '-'}\n\n` +
         `⚠️ RSI en zona de sobrecompra (≥${alertConfig.rsiOverbought}). Sin divergencia detectada.`;

@@ -25,6 +25,7 @@ const DEFAULT_SETTINGS = {
       divergenceBearish: true,
       sentimentExtreme: true,
       cooldownMinutes: 240,
+      alertTimeframe: '1d',
     },
     tokens: {},
   },

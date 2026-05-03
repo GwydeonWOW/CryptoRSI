@@ -217,6 +217,7 @@ function GenericAlertsSection({ settings, onUpdate, onMsg }) {
   const [divBear, setDivBear] = useState(ga.divergenceBearish);
   const [sentiment, setSentiment] = useState(ga.sentimentExtreme);
   const [cooldown, setCooldown] = useState(ga.cooldownMinutes);
+  const [alertTf, setAlertTf] = useState(ga.alertTimeframe || '1d');
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -227,6 +228,7 @@ function GenericAlertsSection({ settings, onUpdate, onMsg }) {
     setDivBear(g.divergenceBearish);
     setSentiment(g.sentimentExtreme);
     setCooldown(g.cooldownMinutes);
+    setAlertTf(g.alertTimeframe || '1d');
   }, [settings]);
 
   async function save() {
@@ -234,7 +236,7 @@ function GenericAlertsSection({ settings, onUpdate, onMsg }) {
     try {
       const res = await fetch('/api/settings', {
         method: 'PUT', headers: getAuthHeaders(),
-        body: JSON.stringify({ alerts: { generic: { rsiOversold: oversold, rsiOverbought: overbought, divergenceBullish: divBull, divergenceBearish: divBear, sentimentExtreme: sentiment, cooldownMinutes: cooldown } } }),
+        body: JSON.stringify({ alerts: { generic: { rsiOversold: oversold, rsiOverbought: overbought, divergenceBullish: divBull, divergenceBearish: divBear, sentimentExtreme: sentiment, cooldownMinutes: cooldown, alertTimeframe: alertTf } } }),
       });
       const data = await res.json();
       if (data.success) { onMsg({ type: 'ok', text: 'Alertas genericas guardadas' }); onUpdate(); }
@@ -247,6 +249,14 @@ function GenericAlertsSection({ settings, onUpdate, onMsg }) {
     <Section title="Alertas Genericas">
       <p className="section-desc">Reglas aplicadas a todos los tokens por defecto. Los tokens con reglas individuales usan las suyas propias.</p>
 
+      <Row label="Intervalo de velas">
+        <select value={alertTf} onChange={e => setAlertTf(e.target.value)}>
+          <option value="15m">15 min</option>
+          <option value="1h">1 hora</option>
+          <option value="4h">4 horas</option>
+          <option value="1d">1 dia</option>
+        </select>
+      </Row>
       <Row label={`RSI Sobreventa: ${oversold}`}>
         <input type="range" min="10" max="45" step="1" value={oversold} onChange={e => setOversold(parseInt(e.target.value))}
           style={{ width: 150 }} />
@@ -317,6 +327,7 @@ function TokenAlertRow({ symbol, custom, generic, onUpdate, onMsg }) {
   const [overbought, setOverbought] = useState(cfg.rsiOverbought);
   const [divBull, setDivBull] = useState(cfg.divergenceBullish);
   const [divBear, setDivBear] = useState(cfg.divergenceBearish);
+  const [alertTf, setAlertTf] = useState(cfg.alertTimeframe || '1d');
   const [loading, setLoading] = useState(false);
 
   async function enable() {
@@ -324,7 +335,7 @@ function TokenAlertRow({ symbol, custom, generic, onUpdate, onMsg }) {
     try {
       const res = await fetch(`/api/settings/alerts/${symbol}`, {
         method: 'PUT', headers: getAuthHeaders(),
-        body: JSON.stringify({ rsiOversold: generic.rsiOversold, rsiOverbought: generic.rsiOverbought, divergenceBullish: generic.divergenceBullish, divergenceBearish: generic.divergenceBearish }),
+        body: JSON.stringify({ rsiOversold: generic.rsiOversold, rsiOverbought: generic.rsiOverbought, divergenceBullish: generic.divergenceBullish, divergenceBearish: generic.divergenceBearish, alertTimeframe: generic.alertTimeframe || '1d' }),
       });
       const data = await res.json();
       if (data.success) { setExpanded(true); onUpdate(); }
@@ -337,7 +348,7 @@ function TokenAlertRow({ symbol, custom, generic, onUpdate, onMsg }) {
     try {
       const res = await fetch(`/api/settings/alerts/${symbol}`, {
         method: 'PUT', headers: getAuthHeaders(),
-        body: JSON.stringify({ rsiOversold: oversold, rsiOverbought: overbought, divergenceBullish: divBull, divergenceBearish: divBear }),
+        body: JSON.stringify({ rsiOversold: oversold, rsiOverbought: overbought, divergenceBullish: divBull, divergenceBearish: divBear, alertTimeframe: alertTf }),
       });
       const data = await res.json();
       if (data.success) { onMsg({ type: 'ok', text: `${symbol} guardado` }); onUpdate(); }
@@ -377,6 +388,14 @@ function TokenAlertRow({ symbol, custom, generic, onUpdate, onMsg }) {
 
       {expanded && (
         <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--surface2)' }}>
+          <Row label="Intervalo de velas">
+            <select value={alertTf} onChange={e => setAlertTf(e.target.value)}>
+              <option value="15m">15 min</option>
+              <option value="1h">1 hora</option>
+              <option value="4h">4 horas</option>
+              <option value="1d">1 dia</option>
+            </select>
+          </Row>
           <Row label={`Sobreventa: ${oversold}`}>
             <input type="range" min="10" max="45" step="1" value={oversold} onChange={e => setOversold(parseInt(e.target.value))} style={{ width: 130 }} />
           </Row>
