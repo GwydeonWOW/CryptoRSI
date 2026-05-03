@@ -1301,6 +1301,7 @@ async function checkAuth() {
 function showLoginState(loggedIn) {
   const loginBtn = document.getElementById('loginBtn');
   const userBadge = document.getElementById('userBadge');
+  const settingsTab = document.getElementById('settingsTab');
   const overlay = document.getElementById('loginOverlay');
 
   if (loggedIn && currentUser) {
@@ -1309,10 +1310,12 @@ function showLoginState(loggedIn) {
     userBadge.textContent = currentUser.displayName || currentUser.username;
     userBadge.style.display = 'inline';
     overlay.style.display = 'none';
+    settingsTab.style.display = currentUser.role === 'admin' ? '' : 'none';
   } else {
     loginBtn.textContent = 'Login';
     loginBtn.onclick = showLogin;
     userBadge.style.display = 'none';
+    settingsTab.style.display = 'none';
   }
 }
 
