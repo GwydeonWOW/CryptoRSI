@@ -10,10 +10,13 @@ export default function Historicos({ refreshTrigger }) {
   const [priceHist, setPriceHist] = useState([]);
   const [sentimentHist, setSentimentHist] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [mounted, setMounted] = useState(false);
 
   const loadData = useCallback(async (sym, d) => {
     if (!sym) return;
     setLoading(true);
+    setError(null);
     try {
       const [r, p, m] = await Promise.all([
         useAPI(`/api/history/rsi/${sym}?days=${d}`),
@@ -23,17 +26,37 @@ export default function Historicos({ refreshTrigger }) {
       setRsiHist(r);
       setPriceHist(p);
       setSentimentHist(m);
-    } catch (e) { console.error(e); }
-    finally { setLoading(false); }
+    } catch (e) {
+      console.error('Historicos load error:', e);
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  // Load tokens list on first trigger
+  // Load tokens on mount
   useEffect(() => {
-    if (refreshTrigger <= 0) return;
-    useAPI('/api/tokens').then(t => {
-      setTokens(t);
-      if (t.length > 0) setSymbol(prev => prev || t[0].symbol);
-    }).catch(() => {});
+    async function init() {
+      try {
+        const t = await useAPI('/api/tokens');
+        setTokens(t);
+        if (t.length > 0) setSymbol(prev => prev || t[0].symbol);
+        setMounted(true);
+      } catch (e) {
+        console.error('Token list error:', e);
+      }
+    }
+    init();
+  }, []);
+
+  // Reload on refresh trigger
+  useEffect(() => {
+    if (refreshTrigger > 0 && mounted) {
+      useAPI('/api/tokens').then(t => {
+        setTokens(t);
+        if (t.length > 0 && !symbol) setSymbol(t[0].symbol);
+      }).catch(() => {});
+    }
   }, [refreshTrigger]);
 
   // Auto-load data when symbol or days changes
@@ -53,9 +76,12 @@ export default function Historicos({ refreshTrigger }) {
           <select value={days} onChange={e => setDays(Number(e.target.value))} style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem' }}>
             {[7, 14, 30, 60, 90].map(d => <option key={d} value={d}>{d} dias</option>)}
           </select>
-          <button className="btn btn-primary btn-sm" onClick={() => loadData(symbol, days)}>Cargar</button>
+          <button className="btn btn-primary btn-sm" onClick={() => loadData(symbol, days)} disabled={loading}>Cargar</button>
         </div>
-        {loading ? <Loading text="Cargando..." /> : <LineChart data={rsiHist} valueFn={d => d.rsi1d} colorFn={v => v >= 70 ? '#ef4444' : v <= 30 ? '#22c55e' : 'var(--blue)'} refs={[{ value: 70, label: '70' }, { value: 50, label: '50' }, { value: 30, label: '30' }]} />}
+        {error && <div className="token-error" style={{ marginBottom: '1rem' }}>Error: {error}</div>}
+        {loading ? <Loading text="Cargando..." /> : (
+          <LineChart data={rsiHist} valueFn={d => d.rsi1d} colorFn={v => v >= 70 ? '#ef4444' : v <= 30 ? '#22c55e' : 'var(--blue)'} refs={[{ value: 70, label: '70' }, { value: 50, label: '50' }, { value: 30, label: '30' }]} />
+        )}
       </div>
 
       <div className="market-section">
