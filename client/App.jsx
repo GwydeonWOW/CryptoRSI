@@ -4,7 +4,6 @@ import TabNav from './components/TabNav';
 import RefreshBar from './components/RefreshBar';
 import Dashboard from './dashboard/Dashboard';
 import MarketAnalysis from './market/MarketAnalysis';
-import Historicos from './historicos/Historicos';
 import Settings from './settings/Settings';
 import UserPanel from './auth/UserPanel';
 import ProfileModal from './auth/ProfileModal';
@@ -29,7 +28,7 @@ export default function App() {
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [triggers, setTriggers] = useState({
-    dashboard: 0, market: 0, historicos: 0, users: 0,
+    dashboard: 0, market: 0, users: 0,
   });
   const visitedRef = useRef({});
 
@@ -60,7 +59,7 @@ export default function App() {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     setUser(null);
-    setTriggers({ dashboard: 0, market: 0, historicos: 0, users: 0 });
+    setTriggers({ dashboard: 0, market: 0, users: 0 });
     visitedRef.current = {};
   }, []);
 
@@ -81,9 +80,6 @@ export default function App() {
         </div>
         <div style={{ display: activeTab === 'market' ? 'block' : 'none' }}>
           <MarketAnalysis refreshTrigger={triggers.market} />
-        </div>
-        <div style={{ display: activeTab === 'historicos' ? 'block' : 'none' }}>
-          <Historicos refreshTrigger={triggers.historicos} />
         </div>
         {isAdmin && (
           <div style={{ display: activeTab === 'settings' ? 'block' : 'none' }}>

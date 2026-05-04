@@ -2,7 +2,6 @@ export default function TabNav({ activeTab, onTabChange, isAdmin }) {
   const tabs = [
     { id: 'dashboard', label: 'Dashboard' },
     { id: 'market', label: 'Analisis de Mercado' },
-    { id: 'historicos', label: 'Historicos' },
     ...(isAdmin ? [{ id: 'settings', label: 'Configuracion' }] : []),
     ...(isAdmin ? [{ id: 'users', label: 'Usuarios' }] : []),
   ];
