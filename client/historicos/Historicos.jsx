@@ -23,6 +23,7 @@ export default function Historicos({ refreshTrigger }) {
         useAPI(`/api/history/prices/${sym}?days=${d}`),
         useAPI(`/api/history/market?days=${d}`),
       ]);
+      console.log('Historicos loaded:', { rsi: r.length, prices: p.length, market: m.length });
       setRsiHist(r);
       setPriceHist(p);
       setSentimentHist(m);
@@ -39,11 +40,13 @@ export default function Historicos({ refreshTrigger }) {
     async function init() {
       try {
         const t = await useAPI('/api/tokens');
+        console.log('Historicos tokens loaded:', t.length, t.map(x => x.symbol));
         setTokens(t);
         if (t.length > 0) setSymbol(prev => prev || t[0].symbol);
         setMounted(true);
       } catch (e) {
         console.error('Token list error:', e);
+        setError('Error cargando tokens: ' + e.message);
       }
     }
     init();
@@ -79,6 +82,11 @@ export default function Historicos({ refreshTrigger }) {
           <button className="btn btn-primary btn-sm" onClick={() => loadData(symbol, days)} disabled={loading}>Cargar</button>
         </div>
         {error && <div className="token-error" style={{ marginBottom: '1rem' }}>Error: {error}</div>}
+        {!loading && mounted && (
+          <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', marginBottom: '0.5rem' }}>
+            Tokens: {tokens.length} | RSI: {rsiHist.length} pts | Precios: {priceHist.length} pts | Sentimiento: {sentimentHist.length} pts
+          </div>
+        )}
         {loading ? <Loading text="Cargando..." /> : (
           <LineChart data={rsiHist} valueFn={d => d.rsi1d} colorFn={v => v >= 70 ? '#ef4444' : v <= 30 ? '#22c55e' : 'var(--blue)'} refs={[{ value: 70, label: '70' }, { value: 50, label: '50' }, { value: 30, label: '30' }]} />
         )}
