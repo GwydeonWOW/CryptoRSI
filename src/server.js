@@ -417,14 +417,11 @@ app.get('/api/trade/auto-stats', authMiddleware, adminMiddleware, async (req, re
  * DELETE /api/trade/auto-reset - Reset auto-trader data (supreme admin only)
  */
 app.delete('/api/trade/auto-reset', authMiddleware, adminMiddleware, (req, res) => {
-  if (req.user.id !== 'admin_001') {
+  if (req.user.id !== 'admin_001' && req.user.username !== 'admin') {
     return res.status(403).json({ error: 'Solo el administrador principal puede resetear el simulador' });
   }
-  const fs = require('fs');
-  const tradePath = require('path').join(getDataDir(), 'trades_admin_001.json');
-  if (fs.existsSync(tradePath)) {
-    writeJSON(tradePath, { positions: [], history: [] });
-  }
+  const resetPath = path.join(getDataDir(), 'trades_admin_001.json');
+  writeJSON(resetPath, { positions: [], history: [] });
   console.log('[AUTO-TRADE] Simulator reset by admin');
   res.json({ success: true });
 });

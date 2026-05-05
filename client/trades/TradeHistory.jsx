@@ -31,7 +31,7 @@ export default function TradeHistory({ refreshTrigger, user }) {
     } catch (e) { alert('Error: ' + e.message); }
   }
 
-  const isSupremeAdmin = user?.id === 'admin_001';
+  const isSupremeAdmin = user?.id === 'admin_001' || user?.username === 'admin';
 
   useEffect(() => { load(); }, []);
   useEffect(() => { if (refreshTrigger > 0) load(); }, [refreshTrigger]);
