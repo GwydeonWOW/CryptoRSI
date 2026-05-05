@@ -101,6 +101,11 @@ function getOpenPositions(userId) {
   return loadTrades(userId).positions;
 }
 
+function hasOpenPosition(userId, symbol) {
+  const trades = loadTrades(userId);
+  return trades.positions.some(p => p.symbol === symbol.toUpperCase());
+}
+
 function getHistory(userId) {
   return loadTrades(userId).history;
 }
@@ -133,4 +138,4 @@ function getStats(userId) {
   };
 }
 
-module.exports = { openPosition, closePosition, getOpenPositions, getHistory, getStats };
+module.exports = { openPosition, closePosition, getOpenPositions, hasOpenPosition, getHistory, getStats };

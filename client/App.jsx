@@ -5,6 +5,7 @@ import RefreshBar from './components/RefreshBar';
 import Dashboard from './dashboard/Dashboard';
 import MarketAnalysis from './market/MarketAnalysis';
 import Settings from './settings/Settings';
+import TradeHistory from './trades/TradeHistory';
 import UserPanel from './auth/UserPanel';
 import ProfileModal from './auth/ProfileModal';
 import Login from './auth/Login';
@@ -28,7 +29,7 @@ export default function App() {
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [triggers, setTriggers] = useState({
-    dashboard: 0, market: 0, users: 0,
+    dashboard: 0, market: 0, trades: 0, users: 0,
   });
   const visitedRef = useRef({});
 
@@ -59,7 +60,7 @@ export default function App() {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     setUser(null);
-    setTriggers({ dashboard: 0, market: 0, users: 0 });
+    setTriggers({ dashboard: 0, market: 0, trades: 0, users: 0 });
     visitedRef.current = {};
   }, []);
 
@@ -81,6 +82,11 @@ export default function App() {
         <div style={{ display: activeTab === 'market' ? 'block' : 'none' }}>
           <MarketAnalysis refreshTrigger={triggers.market} />
         </div>
+        {isAdmin && (
+          <div style={{ display: activeTab === 'trades' ? 'block' : 'none' }}>
+            <TradeHistory refreshTrigger={triggers.trades} />
+          </div>
+        )}
         {isAdmin && (
           <div style={{ display: activeTab === 'settings' ? 'block' : 'none' }}>
             <Settings />

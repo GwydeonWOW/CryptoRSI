@@ -4,7 +4,7 @@ const path = require('path');
 const { calculateRSI, getRecommendation, calculateMultiTimeframeRSI } = require('./rsi');
 const { fetchCandles, fetchCurrentPrice } = require('./api');
 const { loadTokens, addToken, removeToken } = require('./config');
-const { openPosition, closePosition, getOpenPositions, getHistory, getStats } = require('./trades');
+const { openPosition, closePosition, getOpenPositions, hasOpenPosition, getHistory, getStats } = require('./trades');
 const { getMarketAnalysis } = require('./futures');
 const { checkAndNotify, startBotPolling } = require('./telegram');
 const { checkAndNotifyDiscord, sendDiscordMessage } = require('./discord');
@@ -204,6 +204,20 @@ app.get('/api/rsi', async (req, res) => {
 });
 
 // ============================================================
+// BTC Price Widget (lightweight endpoint for header)
+// ============================================================
+
+app.get('/api/btc-price', async (req, res) => {
+  try {
+    const { price } = await fetchCurrentPrice('BTC');
+    const sparkline = getPriceHistory('BTC', 1);
+    res.json({ symbol: 'BTC', price, sparkline });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ============================================================
 // Auth Routes
 // ============================================================
 
@@ -363,6 +377,40 @@ app.get('/api/trade/history', authMiddleware, (req, res) => {
  */
 app.get('/api/trade/stats', authMiddleware, (req, res) => {
   res.json(getStats(req.user.id));
+});
+
+/**
+ * GET /api/trade/auto-stats - Auto-trader stats with per-token breakdown (admin)
+ */
+app.get('/api/trade/auto-stats', authMiddleware, adminMiddleware, async (req, res) => {
+  const ADMIN_ID = 'admin_001';
+  const history = getHistory(ADMIN_ID);
+  const positions = getOpenPositions(ADMIN_ID);
+
+  const overall = getStats(ADMIN_ID);
+
+  const perToken = {};
+  for (const trade of history) {
+    if (!perToken[trade.symbol]) perToken[trade.symbol] = { trades: 0, wins: 0, pnl: 0, pnlPct: [] };
+    perToken[trade.symbol].trades++;
+    if (trade.pnl > 0) perToken[trade.symbol].wins++;
+    perToken[trade.symbol].pnl += trade.pnl;
+    perToken[trade.symbol].pnlPct.push(trade.pnlPct);
+  }
+
+  const positionsWithPnL = await Promise.all(positions.map(async pos => {
+    try {
+      const { price } = await fetchCurrentPrice(pos.symbol);
+      const currentValue = pos.quantity * price;
+      const pnl = currentValue - pos.amount;
+      const pnlPct = (pnl / pos.amount) * 100;
+      return { ...pos, currentPrice: price, currentValue, pnl, pnlPct };
+    } catch (e) {
+      return { ...pos, currentPrice: null, pnl: 0, pnlPct: 0, error: e.message };
+    }
+  }));
+
+  res.json({ overall, perToken, history, positions: positionsWithPnL });
 });
 
 // ============================================================
@@ -572,6 +620,39 @@ async function fetchAllRSI() {
   return results.map(r => r.status === 'fulfilled' ? r.value : { error: r.reason?.message });
 }
 
+const AUTO_TRADER_USER = 'admin_001';
+const AUTO_TRADE_AMOUNT = 1000;
+
+function runAutoTrader(rsiDataArray, settings) {
+  const alertGeneric = settings.alerts?.generic || {};
+  const tokenAlerts = settings.alerts?.tokens || {};
+
+  for (const token of rsiDataArray) {
+    if (!token.primaryRSI || token.error) continue;
+
+    const alertConfig = { ...alertGeneric, ...(tokenAlerts[token.symbol] || {}) };
+    const alertTf = alertConfig.alertTimeframe || '1d';
+    const alertRSI = token.timeframes?.[alertTf]?.rsi || token.primaryRSI;
+
+    // Buy signal: oversold + no open position
+    if (alertRSI <= alertConfig.rsiOversold && !hasOpenPosition(AUTO_TRADER_USER, token.symbol)) {
+      const result = openPosition(AUTO_TRADER_USER, token.symbol, token.price, alertRSI, AUTO_TRADE_AMOUNT);
+      if (result.success) {
+        console.log(`  [AUTO-TRADE] BUY ${token.symbol} @ $${token.price?.toFixed(2)} | RSI ${alertRSI.toFixed(1)} (${alertTf}) | $${AUTO_TRADE_AMOUNT}`);
+      }
+    }
+
+    // Sell signal: overbought + has open position
+    if (alertRSI >= alertConfig.rsiOverbought && hasOpenPosition(AUTO_TRADER_USER, token.symbol)) {
+      const result = closePosition(AUTO_TRADER_USER, token.symbol, token.price, alertRSI);
+      if (result.success) {
+        const pnlStr = result.trade.pnl >= 0 ? `+$${result.trade.pnl.toFixed(2)}` : `-$${Math.abs(result.trade.pnl).toFixed(2)}`;
+        console.log(`  [AUTO-TRADE] SELL ${token.symbol} @ $${token.price?.toFixed(2)} | RSI ${alertRSI.toFixed(1)} (${alertTf}) | ${pnlStr} (${result.trade.pnlPct.toFixed(1)}%)`);
+      }
+    }
+  }
+}
+
 async function collectSnapshot() {
   console.log(`[${new Date().toISOString()}] Collecting data snapshot...`);
 
@@ -643,6 +724,9 @@ async function collectSnapshot() {
       const settings = loadSettings();
       checkAndNotify(rsiDataArray, settings);
       checkAndNotifyDiscord(rsiDataArray, settings);
+
+      // Auto-trader: buy on oversold, sell on overbought
+      runAutoTrader(rsiDataArray, settings);
 
       // Save price snapshot
       const prices = rsiDataArray.map(t => ({ symbol: t.symbol, price: t.price }));
