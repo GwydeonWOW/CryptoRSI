@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { useAuthAPI } from '../hooks/useAPI';
+import { useAuthAPI, getAuthHeaders } from '../hooks/useAPI';
 import Loading from '../components/Loading';
 
-export default function TradeHistory({ refreshTrigger }) {
+export default function TradeHistory({ refreshTrigger, user }) {
   const [data, setData] = useState(null);
   const [filter, setFilter] = useState('ALL');
   const [loading, setLoading] = useState(false);
@@ -20,6 +20,18 @@ export default function TradeHistory({ refreshTrigger }) {
       setLoading(false);
     }
   }
+
+  async function resetSimulator() {
+    if (!confirm('Resetear todas las operaciones del simulador? Esta accion no se puede deshacer.')) return;
+    try {
+      const res = await fetch('/api/trade/auto-reset', { method: 'DELETE', headers: getAuthHeaders() });
+      const data = await res.json();
+      if (data.success) { setFilter('ALL'); load(); }
+      else alert(data.error || 'Error al resetear');
+    } catch (e) { alert('Error: ' + e.message); }
+  }
+
+  const isSupremeAdmin = user?.id === 'admin_001';
 
   useEffect(() => { load(); }, []);
   useEffect(() => { if (refreshTrigger > 0) load(); }, [refreshTrigger]);
@@ -112,6 +124,12 @@ export default function TradeHistory({ refreshTrigger }) {
               {symbols.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
             <button className="btn btn-secondary btn-sm" onClick={load} disabled={loading}>Actualizar</button>
+            {isSupremeAdmin && (
+              <button className="btn btn-sm" onClick={resetSimulator} disabled={loading}
+                style={{ color: 'var(--red)', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)' }}>
+                Resetear
+              </button>
+            )}
           </div>
         </div>
 

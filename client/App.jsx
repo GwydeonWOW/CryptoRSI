@@ -84,7 +84,7 @@ export default function App() {
         </div>
         {isAdmin && (
           <div style={{ display: activeTab === 'trades' ? 'block' : 'none' }}>
-            <TradeHistory refreshTrigger={triggers.trades} />
+            <TradeHistory refreshTrigger={triggers.trades} user={user} />
           </div>
         )}
         {isAdmin && (
