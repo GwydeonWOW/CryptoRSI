@@ -154,7 +154,7 @@ async function checkAndNotifyDiscord(rsiDataArray, settings) {
     }
 
     // RSI Oversold
-    if (!divergence?.bullish && !divergence?.bearish && alertRSI <= alertConfig.rsiOversold) {
+    if (alertRSI <= alertConfig.rsiOversold) {
       const key = `discord_buy:${symbol}`;
       const lastSent = sentSignals.get(key);
       if (!(lastSent && now - lastSent < cooldownMs)) {
@@ -163,7 +163,7 @@ async function checkAndNotifyDiscord(rsiDataArray, settings) {
           ...buildBaseEmbed(token, alertRSI, alertTf),
           color: COLORS.green,
           author: { name: `${RSI_EMOJI.oversold} SOBREVENTA` },
-          description: `RSI en zona de sobreventa (<=${alertConfig.rsiOversold}). Sin divergencia detectada.`,
+          description: `RSI en zona de sobreventa (<=${alertConfig.rsiOversold}).`,
           fields: [
             ...buildBaseEmbed(token, alertRSI, alertTf).fields,
             { name: 'RSI por timeframe', value: tfField, inline: false },
@@ -176,7 +176,7 @@ async function checkAndNotifyDiscord(rsiDataArray, settings) {
     }
 
     // RSI Overbought
-    if (!divergence?.bullish && !divergence?.bearish && alertRSI >= alertConfig.rsiOverbought) {
+    if (alertRSI >= alertConfig.rsiOverbought) {
       const key = `discord_sell:${symbol}`;
       const lastSent = sentSignals.get(key);
       if (!(lastSent && now - lastSent < cooldownMs)) {
@@ -185,7 +185,7 @@ async function checkAndNotifyDiscord(rsiDataArray, settings) {
           ...buildBaseEmbed(token, alertRSI, alertTf),
           color: COLORS.red,
           author: { name: `${RSI_EMOJI.overbought} SOBRECOMPRA` },
-          description: `RSI en zona de sobrecompra (>=${alertConfig.rsiOverbought}). Sin divergencia detectada.`,
+          description: `RSI en zona de sobrecompra (>=${alertConfig.rsiOverbought}).`,
           fields: [
             ...buildBaseEmbed(token, alertRSI, alertTf).fields,
             { name: 'RSI por timeframe', value: tfField, inline: false },

@@ -240,7 +240,7 @@ async function checkAndNotify(rsiDataArray, settings) {
     }
 
     // RSI Oversold
-    if (!divergence?.bullish && !divergence?.bearish && alertRSI <= alertConfig.rsiOversold) {
+    if (alertRSI <= alertConfig.rsiOversold) {
       const key = `buy:${symbol}`;
       const lastSent = sentSignals.get(key);
       if (!(lastSent && now - lastSent < cooldownMs)) {
@@ -250,7 +250,7 @@ async function checkAndNotify(rsiDataArray, settings) {
           `📊 RSI: <b>${alertRSI.toFixed(1)}</b> (${alertTf})\n` +
           `💰 Precio: <b>$${priceStr}</b>\n\n` +
           `⏱ 15m: ${rsi15m?.toFixed(1) || '-'}  |  1H: ${rsi1h?.toFixed(1) || '-'}  |  4H: ${rsi4h?.toFixed(1) || '-'}  |  1D: ${rsi1d?.toFixed(1) || '-'}\n\n` +
-          `⚡ RSI en zona de sobreventa (≤${alertConfig.rsiOversold}). Sin divergencia detectada.`;
+          `⚡ RSI en zona de sobreventa (≤${alertConfig.rsiOversold}).`;
 
         if (webEnabled) await sendTelegramMessage(text, tg.chatId, tg.botToken);
         if (useBackup) await sendTelegramMessage(text, backupChatId, backupToken);
@@ -259,7 +259,7 @@ async function checkAndNotify(rsiDataArray, settings) {
     }
 
     // RSI Overbought
-    if (!divergence?.bullish && !divergence?.bearish && alertRSI >= alertConfig.rsiOverbought) {
+    if (alertRSI >= alertConfig.rsiOverbought) {
       const key = `sell:${symbol}`;
       const lastSent = sentSignals.get(key);
       if (!(lastSent && now - lastSent < cooldownMs)) {
@@ -269,7 +269,7 @@ async function checkAndNotify(rsiDataArray, settings) {
           `📊 RSI: <b>${alertRSI.toFixed(1)}</b> (${alertTf})\n` +
           `💰 Precio: <b>$${priceStr}</b>\n\n` +
           `⏱ 15m: ${rsi15m?.toFixed(1) || '-'}  |  1H: ${rsi1h?.toFixed(1) || '-'}  |  4H: ${rsi4h?.toFixed(1) || '-'}  |  1D: ${rsi1d?.toFixed(1) || '-'}\n\n` +
-          `⚠️ RSI en zona de sobrecompra (≥${alertConfig.rsiOverbought}). Sin divergencia detectada.`;
+          `⚠️ RSI en zona de sobrecompra (≥${alertConfig.rsiOverbought}).`;
 
         if (webEnabled) await sendTelegramMessage(text, tg.chatId, tg.botToken);
         if (useBackup) await sendTelegramMessage(text, backupChatId, backupToken);
