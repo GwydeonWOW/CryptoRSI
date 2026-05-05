@@ -15,7 +15,7 @@ const {
   saveRSISnapshot, getRSIHistory,
   saveMarketSnapshot, getMarketHistory,
   savePriceSnapshot, getPriceHistory,
-  cleanupOldFiles, getDataDir
+  cleanupOldFiles, getDataDir, writeJSON
 } = require('./storage');
 
 const app = express();
