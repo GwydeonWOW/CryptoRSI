@@ -30,7 +30,10 @@ export default function TradeHistory({ refreshTrigger }) {
 
   const { overall, perToken, history, positions } = data;
 
-  const symbols = Object.keys(perToken || {});
+  const symbols = [...new Set([
+    ...Object.keys(perToken || {}),
+    ...(positions || []).map(p => p.symbol),
+  ])];
   const filtered = filter === 'ALL' ? history : history.filter(t => t.symbol === filter);
   const filteredPositions = filter === 'ALL' ? positions : positions.filter(p => p.symbol === filter);
 

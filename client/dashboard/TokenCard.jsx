@@ -63,7 +63,14 @@ export default function TokenCard({ data, onRefresh, isAdmin }) {
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
         <div>
-          <h3 style={{ fontSize: '1.1rem', fontWeight: 600 }}>{data.symbol}</h3>
+          <h3 style={{ fontSize: '1.1rem', fontWeight: 600 }}>
+            <a href={`https://www.tradingview.com/chart/?symbol=BINANCE:${data.symbol}USDT`} target="_blank" rel="noopener noreferrer"
+              style={{ color: 'inherit', textDecoration: 'none' }}
+              onMouseEnter={e => e.target.style.color = 'var(--blue)'}
+              onMouseLeave={e => e.target.style.color = 'inherit'}>
+              {data.symbol} <span style={{ fontSize: '0.6rem', opacity: 0.5 }}>&#8599;</span>
+            </a>
+          </h3>
           <div style={{ color: 'var(--text-dim)', fontSize: '0.8rem' }}>{data.name || ''}</div>
         </div>
         <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: 8 }}>
