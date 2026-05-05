@@ -9,7 +9,6 @@ export default function LiqHeatmap({ zones, currentPrice }) {
   ].sort((a, b) => a.liqPrice - b.liqPrice);
 
   const maxVol = Math.max(...allZones.map(z => z.volume), 1);
-  const significantZones = allZones.filter(z => (z.volume / maxVol) >= 0.05);
 
   return (
     <div>
@@ -17,7 +16,7 @@ export default function LiqHeatmap({ zones, currentPrice }) {
         <span style={{ color: 'var(--blue)', fontWeight: 600 }}>Precio actual: {formatPrice(currentPrice)}</span>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 3, padding: '1rem 0' }}>
-        {significantZones.map((zone, i) => {
+        {allZones.map((zone, i) => {
           const widthPct = Math.min((zone.volume / maxVol) * 100, 100);
           const priceOffset = ((zone.liqPrice - currentPrice) / currentPrice) * 100;
           const isAbove = zone.liqPrice >= currentPrice;
