@@ -234,8 +234,9 @@ async function checkAndNotify(rsiDataArray, settings) {
           `⚠️ Señal de venta: la presion compradora se debilita. Posible correccion bajista.`;
 
         if (webEnabled) await sendTelegramMessage(text, tg.chatId, tg.botToken);
-      if (useBackup) await sendTelegramMessage(text, backupChatId, backupToken);
-      sentSignals.set(key, now);
+        if (useBackup) await sendTelegramMessage(text, backupChatId, backupToken);
+        sentSignals.set(key, now);
+      }
     }
 
     // RSI Oversold
