@@ -4,11 +4,9 @@
  */
 
 const fetch = require('node-fetch');
+const cooldownStore = require('./cooldownStore');
 
 const TELEGRAM_API_BASE = 'https://api.telegram.org/bot';
-
-// Track which signals were already sent to avoid spamming
-const sentSignals = new Map();
 
 let lastUpdateId = 0;
 let pollingActive = false;
@@ -196,7 +194,7 @@ async function checkAndNotify(rsiDataArray, settings) {
     // Bullish divergence
     if (alertConfig.divergenceBullish && divergence?.bullish && alertRSI <= 40) {
       const key = `bull:${symbol}`;
-      const lastSent = sentSignals.get(key);
+      const lastSent = cooldownStore.get(key);
       if (!(lastSent && now - lastSent < cooldownMs)) {
 
         const strengthLabel = divergence.strength === 'strong' ? 'FUERTE' : divergence.strength === 'normal' ? 'Normal' : 'Debil';
@@ -212,14 +210,14 @@ async function checkAndNotify(rsiDataArray, settings) {
 
         if (webEnabled) await sendTelegramMessage(text, tg.chatId, tg.botToken);
         if (useBackup) await sendTelegramMessage(text, backupChatId, backupToken);
-        sentSignals.set(key, now);
+        cooldownStore.set(key, now);
       }
     }
 
     // Bearish divergence
     if (alertConfig.divergenceBearish && divergence?.bearish && alertRSI >= 60) {
       const key = `bear:${symbol}`;
-      const lastSent = sentSignals.get(key);
+      const lastSent = cooldownStore.get(key);
       if (!(lastSent && now - lastSent < cooldownMs)) {
 
         const strengthLabel = divergence.strength === 'strong' ? 'FUERTE' : divergence.strength === 'normal' ? 'Normal' : 'Debil';
@@ -235,14 +233,14 @@ async function checkAndNotify(rsiDataArray, settings) {
 
         if (webEnabled) await sendTelegramMessage(text, tg.chatId, tg.botToken);
         if (useBackup) await sendTelegramMessage(text, backupChatId, backupToken);
-        sentSignals.set(key, now);
+        cooldownStore.set(key, now);
       }
     }
 
     // RSI Oversold
     if (alertRSI <= alertConfig.rsiOversold) {
       const key = `buy:${symbol}`;
-      const lastSent = sentSignals.get(key);
+      const lastSent = cooldownStore.get(key);
       if (!(lastSent && now - lastSent < cooldownMs)) {
 
         const text =
@@ -254,14 +252,14 @@ async function checkAndNotify(rsiDataArray, settings) {
 
         if (webEnabled) await sendTelegramMessage(text, tg.chatId, tg.botToken);
         if (useBackup) await sendTelegramMessage(text, backupChatId, backupToken);
-        sentSignals.set(key, now);
+        cooldownStore.set(key, now);
       }
     }
 
     // RSI Overbought
     if (alertRSI >= alertConfig.rsiOverbought) {
       const key = `sell:${symbol}`;
-      const lastSent = sentSignals.get(key);
+      const lastSent = cooldownStore.get(key);
       if (!(lastSent && now - lastSent < cooldownMs)) {
 
         const text =
@@ -273,7 +271,7 @@ async function checkAndNotify(rsiDataArray, settings) {
 
         if (webEnabled) await sendTelegramMessage(text, tg.chatId, tg.botToken);
         if (useBackup) await sendTelegramMessage(text, backupChatId, backupToken);
-        sentSignals.set(key, now);
+        cooldownStore.set(key, now);
       }
     }
   }

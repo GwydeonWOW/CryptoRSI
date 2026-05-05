@@ -3,8 +3,7 @@
  */
 
 const fetch = require('node-fetch');
-
-const sentSignals = new Map();
+const cooldownStore = require('./cooldownStore');
 
 const COLORS = {
   green: 0x22c55e,
@@ -108,7 +107,7 @@ async function checkAndNotifyDiscord(rsiDataArray, settings) {
     // Bullish divergence
     if (alertConfig.divergenceBullish && divergence?.bullish && alertRSI <= 40) {
       const key = `discord_bull:${symbol}`;
-      const lastSent = sentSignals.get(key);
+      const lastSent = cooldownStore.get(key);
       if (!(lastSent && now - lastSent < cooldownMs)) {
 
         const strengthLabel = divergence.strength === 'strong' ? 'FUERTE' : divergence.strength === 'normal' ? 'Normal' : 'Debil';
@@ -125,14 +124,14 @@ async function checkAndNotifyDiscord(rsiDataArray, settings) {
         };
 
         const sent = await sendDiscordEmbed(embed, webhookUrl);
-        if (sent) sentSignals.set(key, now);
+        if (sent) cooldownStore.set(key, now);
       }
     }
 
     // Bearish divergence
     if (alertConfig.divergenceBearish && divergence?.bearish && alertRSI >= 60) {
       const key = `discord_bear:${symbol}`;
-      const lastSent = sentSignals.get(key);
+      const lastSent = cooldownStore.get(key);
       if (!(lastSent && now - lastSent < cooldownMs)) {
 
         const strengthLabel = divergence.strength === 'strong' ? 'FUERTE' : divergence.strength === 'normal' ? 'Normal' : 'Debil';
@@ -149,14 +148,14 @@ async function checkAndNotifyDiscord(rsiDataArray, settings) {
         };
 
         const sent = await sendDiscordEmbed(embed, webhookUrl);
-        if (sent) sentSignals.set(key, now);
+        if (sent) cooldownStore.set(key, now);
       }
     }
 
     // RSI Oversold
     if (alertRSI <= alertConfig.rsiOversold) {
       const key = `discord_buy:${symbol}`;
-      const lastSent = sentSignals.get(key);
+      const lastSent = cooldownStore.get(key);
       if (!(lastSent && now - lastSent < cooldownMs)) {
 
         const embed = {
@@ -171,14 +170,14 @@ async function checkAndNotifyDiscord(rsiDataArray, settings) {
         };
 
         const sent = await sendDiscordEmbed(embed, webhookUrl);
-        if (sent) sentSignals.set(key, now);
+        if (sent) cooldownStore.set(key, now);
       }
     }
 
     // RSI Overbought
     if (alertRSI >= alertConfig.rsiOverbought) {
       const key = `discord_sell:${symbol}`;
-      const lastSent = sentSignals.get(key);
+      const lastSent = cooldownStore.get(key);
       if (!(lastSent && now - lastSent < cooldownMs)) {
 
         const embed = {
@@ -193,7 +192,7 @@ async function checkAndNotifyDiscord(rsiDataArray, settings) {
         };
 
         const sent = await sendDiscordEmbed(embed, webhookUrl);
-        if (sent) sentSignals.set(key, now);
+        if (sent) cooldownStore.set(key, now);
       }
     }
   }
