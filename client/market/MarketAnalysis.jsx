@@ -76,8 +76,8 @@ export default function MarketAnalysis({ refreshTrigger }) {
     <div>
       <SentimentCard sentiment={data.sentiment} price={data.currentPrice} />
       <div className="market-section">
-        <h3 className="section-title">Mapa de Zonas de Liquidacion</h3>
-        <p className="section-desc">Zonas de precio donde se concentran liquidaciones de posiciones apalancadas.</p>
+        <h3 className="section-title">Depth Chart</h3>
+        <p className="section-desc">Volumen acumulado de compras y ventas en el order book de futuros.</p>
         <LiqHeatmap zones={data.liquidationZones} currentPrice={data.currentPrice} />
       </div>
       <SignalCards signals={data.sentiment?.signals} />
