@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import MiniSparkline from './MiniSparkline';
 
 export default function Header({ onRefresh, refreshing, lastUpdated, user, onLogout, onProfile }) {
   return (
@@ -80,31 +81,7 @@ function BtcWidget() {
       <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>
         ${price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
       </span>
-      {sparkline.length > 1 && <MiniSparkline data={sparkline.map(s => s.price)} />}
+      {sparkline.length > 1 && <MiniSparkline data={sparkline.map(s => s.price)} height={20} />}
     </div>
-  );
-}
-
-function MiniSparkline({ data }) {
-  const min = Math.min(...data);
-  const max = Math.max(...data);
-  const range = max - min || 1;
-  const w = 60;
-  const h = 20;
-
-  const points = data.map((v, i) => {
-    const x = (i / (data.length - 1)) * w;
-    const y = h - ((v - min) / range) * h;
-    return `${x},${y}`;
-  }).join(' ');
-
-  const last = data[data.length - 1];
-  const first = data[0];
-  const color = last >= first ? '#22c55e' : '#ef4444';
-
-  return (
-    <svg width={w} height={h} style={{ display: 'block' }}>
-      <polyline fill="none" stroke={color} strokeWidth="1.5" points={points} />
-    </svg>
   );
 }

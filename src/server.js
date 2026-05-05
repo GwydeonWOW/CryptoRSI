@@ -170,6 +170,7 @@ app.get('/api/rsi', async (req, res) => {
 
         const rsiData = calculateMultiTimeframeRSI(candlesByTimeframe, period);
         const { price } = await fetchCurrentPrice(token.symbol);
+        const sparkline = (getPriceHistory(token.symbol, 1) || []).map(s => s.price);
 
         // Primary RSI: shortest timeframe for most current reading
         const primaryTF = rsiData['15m']?.rsi !== null ? '15m'
@@ -183,6 +184,7 @@ app.get('/api/rsi', async (req, res) => {
           symbol: token.symbol,
           name: token.name,
           price,
+          sparkline,
           primaryRSI,
           primaryTimeframe: primaryTF,
           divergence: primaryDivergence,

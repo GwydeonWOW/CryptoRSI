@@ -1,5 +1,6 @@
 import RSIGauge from './RSIGauge';
 import RSIChart from './RSIChart';
+import MiniSparkline from '../components/MiniSparkline';
 import { useState } from 'react';
 import { getAuthHeaders } from '../hooks/useAPI';
 
@@ -71,15 +72,18 @@ export default function TokenCard({ data, onRefresh, isAdmin }) {
           </h3>
           <div style={{ color: 'var(--text-dim)', fontSize: '0.8rem' }}>{data.name || ''}</div>
         </div>
-        <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div style={{ fontSize: '1.2rem', fontWeight: 600 }}>{formatPrice(data.price)}</div>
-          {isAdmin && (
-            <button onClick={() => removeToken(data.symbol)} title="Eliminar token"
-              style={{
-                background: 'none', border: 'none', cursor: 'pointer',
-                color: 'var(--text-dim)', fontSize: '1rem', padding: 2, lineHeight: 1,
-              }}>&times;</button>
-          )}
+        <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ fontSize: '1.2rem', fontWeight: 600 }}>{formatPrice(data.price)}</div>
+            {isAdmin && (
+              <button onClick={() => removeToken(data.symbol)} title="Eliminar token"
+                style={{
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  color: 'var(--text-dim)', fontSize: '1rem', padding: 2, lineHeight: 1,
+                }}>&times;</button>
+            )}
+          </div>
+          {data.sparkline?.length > 1 && <MiniSparkline data={data.sparkline} width={60} height={14} />}
         </div>
       </div>
 
