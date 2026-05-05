@@ -109,88 +109,92 @@ async function checkAndNotifyDiscord(rsiDataArray, settings) {
     if (alertConfig.divergenceBullish && divergence?.bullish && alertRSI <= 40) {
       const key = `discord_bull:${symbol}`;
       const lastSent = sentSignals.get(key);
-      if (lastSent && now - lastSent < cooldownMs) continue;
+      if (!(lastSent && now - lastSent < cooldownMs)) {
 
-      const strengthLabel = divergence.strength === 'strong' ? 'FUERTE' : divergence.strength === 'normal' ? 'Normal' : 'Debil';
-      const embed = {
-        ...buildBaseEmbed(token, alertRSI, alertTf),
-        color: COLORS.green,
-        author: { name: `${RSI_EMOJI.bullishDiv} DIVERGENCIA ALCISTA` },
-        description: `${divergence.reason || 'Precio baja pero RSI sube'}\nFuerza: **${strengthLabel}**`,
-        fields: [
-          ...buildBaseEmbed(token, alertRSI, alertTf).fields,
-          { name: 'RSI por timeframe', value: tfField, inline: false },
-          { name: 'Senal', value: 'Compra: la presion vendedora se debilita. Posible rebote alcista.', inline: false },
-        ],
-      };
+        const strengthLabel = divergence.strength === 'strong' ? 'FUERTE' : divergence.strength === 'normal' ? 'Normal' : 'Debil';
+        const embed = {
+          ...buildBaseEmbed(token, alertRSI, alertTf),
+          color: COLORS.green,
+          author: { name: `${RSI_EMOJI.bullishDiv} DIVERGENCIA ALCISTA` },
+          description: `${divergence.reason || 'Precio baja pero RSI sube'}\nFuerza: **${strengthLabel}**`,
+          fields: [
+            ...buildBaseEmbed(token, alertRSI, alertTf).fields,
+            { name: 'RSI por timeframe', value: tfField, inline: false },
+            { name: 'Senal', value: 'Compra: la presion vendedora se debilita. Posible rebote alcista.', inline: false },
+          ],
+        };
 
-      const sent = await sendDiscordEmbed(embed, webhookUrl);
-      if (sent) sentSignals.set(key, now);
+        const sent = await sendDiscordEmbed(embed, webhookUrl);
+        if (sent) sentSignals.set(key, now);
+      }
     }
 
     // Bearish divergence
     if (alertConfig.divergenceBearish && divergence?.bearish && alertRSI >= 60) {
       const key = `discord_bear:${symbol}`;
       const lastSent = sentSignals.get(key);
-      if (lastSent && now - lastSent < cooldownMs) continue;
+      if (!(lastSent && now - lastSent < cooldownMs)) {
 
-      const strengthLabel = divergence.strength === 'strong' ? 'FUERTE' : divergence.strength === 'normal' ? 'Normal' : 'Debil';
-      const embed = {
-        ...buildBaseEmbed(token, alertRSI, alertTf),
-        color: COLORS.red,
-        author: { name: `${RSI_EMOJI.bearishDiv} DIVERGENCIA BAJISTA` },
-        description: `${divergence.reason || 'Precio sube pero RSI baja'}\nFuerza: **${strengthLabel}**`,
-        fields: [
-          ...buildBaseEmbed(token, alertRSI, alertTf).fields,
-          { name: 'RSI por timeframe', value: tfField, inline: false },
-          { name: 'Senal', value: 'Venta: la presion compradora se debilita. Posible correccion bajista.', inline: false },
-        ],
-      };
+        const strengthLabel = divergence.strength === 'strong' ? 'FUERTE' : divergence.strength === 'normal' ? 'Normal' : 'Debil';
+        const embed = {
+          ...buildBaseEmbed(token, alertRSI, alertTf),
+          color: COLORS.red,
+          author: { name: `${RSI_EMOJI.bearishDiv} DIVERGENCIA BAJISTA` },
+          description: `${divergence.reason || 'Precio sube pero RSI baja'}\nFuerza: **${strengthLabel}**`,
+          fields: [
+            ...buildBaseEmbed(token, alertRSI, alertTf).fields,
+            { name: 'RSI por timeframe', value: tfField, inline: false },
+            { name: 'Senal', value: 'Venta: la presion compradora se debilita. Posible correccion bajista.', inline: false },
+          ],
+        };
 
-      const sent = await sendDiscordEmbed(embed, webhookUrl);
-      if (sent) sentSignals.set(key, now);
+        const sent = await sendDiscordEmbed(embed, webhookUrl);
+        if (sent) sentSignals.set(key, now);
+      }
     }
 
     // RSI Oversold
     if (!divergence?.bullish && !divergence?.bearish && alertRSI <= alertConfig.rsiOversold) {
       const key = `discord_buy:${symbol}`;
       const lastSent = sentSignals.get(key);
-      if (lastSent && now - lastSent < cooldownMs) continue;
+      if (!(lastSent && now - lastSent < cooldownMs)) {
 
-      const embed = {
-        ...buildBaseEmbed(token, alertRSI, alertTf),
-        color: COLORS.green,
-        author: { name: `${RSI_EMOJI.oversold} SOBREVENTA` },
-        description: `RSI en zona de sobreventa (<=${alertConfig.rsiOversold}). Sin divergencia detectada.`,
-        fields: [
-          ...buildBaseEmbed(token, alertRSI, alertTf).fields,
-          { name: 'RSI por timeframe', value: tfField, inline: false },
-        ],
-      };
+        const embed = {
+          ...buildBaseEmbed(token, alertRSI, alertTf),
+          color: COLORS.green,
+          author: { name: `${RSI_EMOJI.oversold} SOBREVENTA` },
+          description: `RSI en zona de sobreventa (<=${alertConfig.rsiOversold}). Sin divergencia detectada.`,
+          fields: [
+            ...buildBaseEmbed(token, alertRSI, alertTf).fields,
+            { name: 'RSI por timeframe', value: tfField, inline: false },
+          ],
+        };
 
-      const sent = await sendDiscordEmbed(embed, webhookUrl);
-      if (sent) sentSignals.set(key, now);
+        const sent = await sendDiscordEmbed(embed, webhookUrl);
+        if (sent) sentSignals.set(key, now);
+      }
     }
 
     // RSI Overbought
     if (!divergence?.bullish && !divergence?.bearish && alertRSI >= alertConfig.rsiOverbought) {
       const key = `discord_sell:${symbol}`;
       const lastSent = sentSignals.get(key);
-      if (lastSent && now - lastSent < cooldownMs) continue;
+      if (!(lastSent && now - lastSent < cooldownMs)) {
 
-      const embed = {
-        ...buildBaseEmbed(token, alertRSI, alertTf),
-        color: COLORS.red,
-        author: { name: `${RSI_EMOJI.overbought} SOBRECOMPRA` },
-        description: `RSI en zona de sobrecompra (>=${alertConfig.rsiOverbought}). Sin divergencia detectada.`,
-        fields: [
-          ...buildBaseEmbed(token, alertRSI, alertTf).fields,
-          { name: 'RSI por timeframe', value: tfField, inline: false },
-        ],
-      };
+        const embed = {
+          ...buildBaseEmbed(token, alertRSI, alertTf),
+          color: COLORS.red,
+          author: { name: `${RSI_EMOJI.overbought} SOBRECOMPRA` },
+          description: `RSI en zona de sobrecompra (>=${alertConfig.rsiOverbought}). Sin divergencia detectada.`,
+          fields: [
+            ...buildBaseEmbed(token, alertRSI, alertTf).fields,
+            { name: 'RSI por timeframe', value: tfField, inline: false },
+          ],
+        };
 
-      const sent = await sendDiscordEmbed(embed, webhookUrl);
-      if (sent) sentSignals.set(key, now);
+        const sent = await sendDiscordEmbed(embed, webhookUrl);
+        if (sent) sentSignals.set(key, now);
+      }
     }
   }
 }

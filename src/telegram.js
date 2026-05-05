@@ -197,42 +197,43 @@ async function checkAndNotify(rsiDataArray, settings) {
     if (alertConfig.divergenceBullish && divergence?.bullish && alertRSI <= 40) {
       const key = `bull:${symbol}`;
       const lastSent = sentSignals.get(key);
-      if (lastSent && now - lastSent < cooldownMs) continue;
+      if (!(lastSent && now - lastSent < cooldownMs)) {
 
-      const strengthLabel = divergence.strength === 'strong' ? 'FUERTE' : divergence.strength === 'normal' ? 'Normal' : 'Debil';
-      const text =
-        `[BULL] <b>DIVERGENCIA ALCISTA</b> — ${name || symbol}\n\n` +
-        `Fuerza: <b>${strengthLabel}</b>\n` +
-        `${divergence.reason || 'Precio baja pero RSI sube'}\n\n` +
-        `📊 RSI: <b>${alertRSI.toFixed(1)}</b> (${alertTf})\n` +
-        `💰 Precio: <b>$${priceStr}</b>\n\n` +
-        `RSI por timeframe:\n` +
-        `   15m: ${rsi15m?.toFixed(1) || '-'}  |  1H: ${rsi1h?.toFixed(1) || '-'}  |  4H: ${rsi4h?.toFixed(1) || '-'}  |  1D: ${rsi1d?.toFixed(1) || '-'}\n\n` +
-        `⚡ Señal de compra: la presion vendedora se debilita. Posible rebote alcista.`;
+        const strengthLabel = divergence.strength === 'strong' ? 'FUERTE' : divergence.strength === 'normal' ? 'Normal' : 'Debil';
+        const text =
+          `[BULL] <b>DIVERGENCIA ALCISTA</b> — ${name || symbol}\n\n` +
+          `Fuerza: <b>${strengthLabel}</b>\n` +
+          `${divergence.reason || 'Precio baja pero RSI sube'}\n\n` +
+          `📊 RSI: <b>${alertRSI.toFixed(1)}</b> (${alertTf})\n` +
+          `💰 Precio: <b>$${priceStr}</b>\n\n` +
+          `RSI por timeframe:\n` +
+          `   15m: ${rsi15m?.toFixed(1) || '-'}  |  1H: ${rsi1h?.toFixed(1) || '-'}  |  4H: ${rsi4h?.toFixed(1) || '-'}  |  1D: ${rsi1d?.toFixed(1) || '-'}\n\n` +
+          `⚡ Señal de compra: la presion vendedora se debilita. Posible rebote alcista.`;
 
-      if (webEnabled) await sendTelegramMessage(text, tg.chatId, tg.botToken);
-      if (useBackup) await sendTelegramMessage(text, backupChatId, backupToken);
-      sentSignals.set(key, now);
+        if (webEnabled) await sendTelegramMessage(text, tg.chatId, tg.botToken);
+        if (useBackup) await sendTelegramMessage(text, backupChatId, backupToken);
+        sentSignals.set(key, now);
+      }
     }
 
     // Bearish divergence
     if (alertConfig.divergenceBearish && divergence?.bearish && alertRSI >= 60) {
       const key = `bear:${symbol}`;
       const lastSent = sentSignals.get(key);
-      if (lastSent && now - lastSent < cooldownMs) continue;
+      if (!(lastSent && now - lastSent < cooldownMs)) {
 
-      const strengthLabel = divergence.strength === 'strong' ? 'FUERTE' : divergence.strength === 'normal' ? 'Normal' : 'Debil';
-      const text =
-        `[BEAR] <b>DIVERGENCIA BAJISTA</b> — ${name || symbol}\n\n` +
-        `Fuerza: <b>${strengthLabel}</b>\n` +
-        `${divergence.reason || 'Precio sube pero RSI baja'}\n\n` +
-        `📊 RSI: <b>${alertRSI.toFixed(1)}</b> (${alertTf})\n` +
-        `💰 Precio: <b>$${priceStr}</b>\n\n` +
-        `RSI por timeframe:\n` +
-        `   15m: ${rsi15m?.toFixed(1) || '-'}  |  1H: ${rsi1h?.toFixed(1) || '-'}  |  4H: ${rsi4h?.toFixed(1) || '-'}  |  1D: ${rsi1d?.toFixed(1) || '-'}\n\n` +
-        `⚠️ Señal de venta: la presion compradora se debilita. Posible correccion bajista.`;
+        const strengthLabel = divergence.strength === 'strong' ? 'FUERTE' : divergence.strength === 'normal' ? 'Normal' : 'Debil';
+        const text =
+          `[BEAR] <b>DIVERGENCIA BAJISTA</b> — ${name || symbol}\n\n` +
+          `Fuerza: <b>${strengthLabel}</b>\n` +
+          `${divergence.reason || 'Precio sube pero RSI baja'}\n\n` +
+          `📊 RSI: <b>${alertRSI.toFixed(1)}</b> (${alertTf})\n` +
+          `💰 Precio: <b>$${priceStr}</b>\n\n` +
+          `RSI por timeframe:\n` +
+          `   15m: ${rsi15m?.toFixed(1) || '-'}  |  1H: ${rsi1h?.toFixed(1) || '-'}  |  4H: ${rsi4h?.toFixed(1) || '-'}  |  1D: ${rsi1d?.toFixed(1) || '-'}\n\n` +
+          `⚠️ Señal de venta: la presion compradora se debilita. Posible correccion bajista.`;
 
-      if (webEnabled) await sendTelegramMessage(text, tg.chatId, tg.botToken);
+        if (webEnabled) await sendTelegramMessage(text, tg.chatId, tg.botToken);
       if (useBackup) await sendTelegramMessage(text, backupChatId, backupToken);
       sentSignals.set(key, now);
     }
@@ -241,36 +242,38 @@ async function checkAndNotify(rsiDataArray, settings) {
     if (!divergence?.bullish && !divergence?.bearish && alertRSI <= alertConfig.rsiOversold) {
       const key = `buy:${symbol}`;
       const lastSent = sentSignals.get(key);
-      if (lastSent && now - lastSent < cooldownMs) continue;
+      if (!(lastSent && now - lastSent < cooldownMs)) {
 
-      const text =
-        `🟢 <b>SOBREVENTA</b> — ${name || symbol}\n\n` +
-        `📊 RSI: <b>${alertRSI.toFixed(1)}</b> (${alertTf})\n` +
-        `💰 Precio: <b>$${priceStr}</b>\n\n` +
-        `⏱ 15m: ${rsi15m?.toFixed(1) || '-'}  |  1H: ${rsi1h?.toFixed(1) || '-'}  |  4H: ${rsi4h?.toFixed(1) || '-'}  |  1D: ${rsi1d?.toFixed(1) || '-'}\n\n` +
-        `⚡ RSI en zona de sobreventa (≤${alertConfig.rsiOversold}). Sin divergencia detectada.`;
+        const text =
+          `🟢 <b>SOBREVENTA</b> — ${name || symbol}\n\n` +
+          `📊 RSI: <b>${alertRSI.toFixed(1)}</b> (${alertTf})\n` +
+          `💰 Precio: <b>$${priceStr}</b>\n\n` +
+          `⏱ 15m: ${rsi15m?.toFixed(1) || '-'}  |  1H: ${rsi1h?.toFixed(1) || '-'}  |  4H: ${rsi4h?.toFixed(1) || '-'}  |  1D: ${rsi1d?.toFixed(1) || '-'}\n\n` +
+          `⚡ RSI en zona de sobreventa (≤${alertConfig.rsiOversold}). Sin divergencia detectada.`;
 
-      if (webEnabled) await sendTelegramMessage(text, tg.chatId, tg.botToken);
-      if (useBackup) await sendTelegramMessage(text, backupChatId, backupToken);
-      sentSignals.set(key, now);
+        if (webEnabled) await sendTelegramMessage(text, tg.chatId, tg.botToken);
+        if (useBackup) await sendTelegramMessage(text, backupChatId, backupToken);
+        sentSignals.set(key, now);
+      }
     }
 
     // RSI Overbought
     if (!divergence?.bullish && !divergence?.bearish && alertRSI >= alertConfig.rsiOverbought) {
       const key = `sell:${symbol}`;
       const lastSent = sentSignals.get(key);
-      if (lastSent && now - lastSent < cooldownMs) continue;
+      if (!(lastSent && now - lastSent < cooldownMs)) {
 
-      const text =
-        `🔴 <b>SOBRECOMPRA</b> — ${name || symbol}\n\n` +
-        `📊 RSI: <b>${alertRSI.toFixed(1)}</b> (${alertTf})\n` +
-        `💰 Precio: <b>$${priceStr}</b>\n\n` +
-        `⏱ 15m: ${rsi15m?.toFixed(1) || '-'}  |  1H: ${rsi1h?.toFixed(1) || '-'}  |  4H: ${rsi4h?.toFixed(1) || '-'}  |  1D: ${rsi1d?.toFixed(1) || '-'}\n\n` +
-        `⚠️ RSI en zona de sobrecompra (≥${alertConfig.rsiOverbought}). Sin divergencia detectada.`;
+        const text =
+          `🔴 <b>SOBRECOMPRA</b> — ${name || symbol}\n\n` +
+          `📊 RSI: <b>${alertRSI.toFixed(1)}</b> (${alertTf})\n` +
+          `💰 Precio: <b>$${priceStr}</b>\n\n` +
+          `⏱ 15m: ${rsi15m?.toFixed(1) || '-'}  |  1H: ${rsi1h?.toFixed(1) || '-'}  |  4H: ${rsi4h?.toFixed(1) || '-'}  |  1D: ${rsi1d?.toFixed(1) || '-'}\n\n` +
+          `⚠️ RSI en zona de sobrecompra (≥${alertConfig.rsiOverbought}). Sin divergencia detectada.`;
 
-      if (webEnabled) await sendTelegramMessage(text, tg.chatId, tg.botToken);
-      if (useBackup) await sendTelegramMessage(text, backupChatId, backupToken);
-      sentSignals.set(key, now);
+        if (webEnabled) await sendTelegramMessage(text, tg.chatId, tg.botToken);
+        if (useBackup) await sendTelegramMessage(text, backupChatId, backupToken);
+        sentSignals.set(key, now);
+      }
     }
   }
 }
