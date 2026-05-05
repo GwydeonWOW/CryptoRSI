@@ -275,6 +275,15 @@ input::placeholder { color: var(--text-dim); }
   margin-bottom: 1.5rem;
 }
 
+/* TradingView link */
+a.tv-link {
+  color: inherit;
+  text-decoration: none;
+}
+a.tv-link:hover {
+  color: var(--blue);
+}
+
 @media (max-width: 600px) {
   .tokens-grid { grid-template-columns: 1fr; }
   .stats-grid { grid-template-columns: repeat(2, 1fr); }

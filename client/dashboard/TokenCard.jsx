@@ -65,9 +65,7 @@ export default function TokenCard({ data, onRefresh, isAdmin }) {
         <div>
           <h3 style={{ fontSize: '1.1rem', fontWeight: 600 }}>
             <a href={`https://www.tradingview.com/chart/?symbol=BINANCE:${data.symbol}USDT`} target="_blank" rel="noopener noreferrer"
-              style={{ color: 'inherit', textDecoration: 'none' }}
-              onMouseEnter={e => e.target.style.color = 'var(--blue)'}
-              onMouseLeave={e => e.target.style.color = 'inherit'}>
+              className="tv-link">
               {data.symbol} <span style={{ fontSize: '0.6rem', opacity: 0.5 }}>&#8599;</span>
             </a>
           </h3>

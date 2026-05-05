@@ -58,7 +58,7 @@ export default function TradeHistory({ refreshTrigger }) {
           <h3 className="section-title">Resumen por Token</h3>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0.5rem', marginTop: '0.75rem' }}>
             {symbols.map(sym => (
-              <TokenSummary key={sym} symbol={sym} stats={perToken[sym]} active={filter === sym} onClick={() => setFilter(filter === sym ? 'ALL' : sym)} />
+              <TokenSummary key={sym} symbol={sym} stats={perToken[sym] || { trades: 0, wins: 0, pnl: 0, pnlPct: [] }} active={filter === sym} onClick={() => setFilter(filter === sym ? 'ALL' : sym)} />
             ))}
           </div>
         </div>
