@@ -102,9 +102,9 @@ export default function LiqHeatmap({ zones, currentPrice }) {
 
 function bucketDepth(orders, numBuckets, sortDir) {
   if (!orders.length) return [];
-  const sorted = [...orders].sort((a, b) => sortDir === 'asc' ? a.price - b.price : b.price - a.price);
-  const low = sorted[sorted.length - 1].price;
-  const high = sorted[0].price;
+  const allPrices = orders.map(o => o.price);
+  const low = Math.min(...allPrices);
+  const high = Math.max(...allPrices);
   const range = high - low || 1;
   const step = range / numBuckets;
 
@@ -112,7 +112,7 @@ function bucketDepth(orders, numBuckets, sortDir) {
   for (let i = 0; i < numBuckets; i++) {
     const from = sortDir === 'asc' ? low + i * step : high - i * step;
     const to = sortDir === 'asc' ? low + (i + 1) * step : high - (i + 1) * step;
-    const inBucket = sorted.filter(o => sortDir === 'asc' ? o.price >= from && o.price < to : o.price <= from && o.price > to);
+    const inBucket = orders.filter(o => sortDir === 'asc' ? o.price >= from && o.price < to : o.price <= from && o.price > to);
     const totalQty = inBucket.reduce((s, o) => s + o.qty, 0);
     if (totalQty > 0) {
       const avgPrice = inBucket.reduce((s, o) => s + o.price, 0) / inBucket.length;
