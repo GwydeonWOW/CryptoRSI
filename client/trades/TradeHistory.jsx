@@ -89,6 +89,7 @@ export default function TradeHistory({ refreshTrigger, user }) {
                   <th style={thStyle}>Precio Compra</th>
                   <th style={thStyle}>Precio Actual</th>
                   <th style={thStyle}>Inversion</th>
+                  <th style={thStyle}>Cantidad</th>
                   <th style={thStyle}>RSI Compra</th>
                   <th style={thStyle}>P&L</th>
                   <th style={thStyle}>P&L %</th>
@@ -102,6 +103,7 @@ export default function TradeHistory({ refreshTrigger, user }) {
                     <td style={tdStyle}>${pos.entryPrice?.toFixed(2)}</td>
                     <td style={tdStyle}>{pos.currentPrice ? `$${pos.currentPrice.toFixed(2)}` : '-'}</td>
                     <td style={tdStyle}>${pos.amount?.toFixed(2)}</td>
+                    <td style={tdStyle}>{pos.quantity?.toFixed(6)}</td>
                     <td style={tdStyle}>{pos.rsiAtOpen?.toFixed(1) || '-'}</td>
                     <td style={{ ...tdStyle, color: pos.pnl >= 0 ? 'var(--green)' : 'var(--red)' }}>{formatPnl(pos.pnl)}</td>
                     <td style={{ ...tdStyle, color: pos.pnlPct >= 0 ? 'var(--green)' : 'var(--red)' }}>{pos.pnlPct?.toFixed(2)}%</td>
@@ -115,15 +117,19 @@ export default function TradeHistory({ refreshTrigger, user }) {
 
       {/* Trade History */}
       <div className="market-section">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
           <h3 className="section-title" style={{ marginBottom: 0 }}>Historial de Operaciones</h3>
-          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
             <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>Filtrar:</span>
             <select value={filter} onChange={e => setFilter(e.target.value)} style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem' }}>
               <option value="ALL">Todos</option>
               {symbols.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
             <button className="btn btn-secondary btn-sm" onClick={load} disabled={loading}>Actualizar</button>
+            {filtered.length > 0 && <>
+              <button className="btn btn-secondary btn-sm" onClick={() => exportCSV(filtered)}>Exportar CSV</button>
+              <button className="btn btn-secondary btn-sm" onClick={() => exportExcel(filtered)}>Exportar Excel</button>
+            </>}
             {isSupremeAdmin && (
               <button className="btn btn-sm" onClick={resetSimulator} disabled={loading}
                 style={{ color: 'var(--red)', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)' }}>
@@ -147,15 +153,18 @@ export default function TradeHistory({ refreshTrigger, user }) {
               <thead>
                 <tr>
                   <th style={thStyle}>Token</th>
-                  <th style={thStyle}>Compra</th>
-                  <th style={thStyle}>Venta</th>
+                  <th style={thStyle}>Fecha Apertura</th>
+                  <th style={thStyle}>Fecha Cierre</th>
+                  <th style={thStyle}>Duracion</th>
                   <th style={thStyle}>Precio Compra</th>
                   <th style={thStyle}>Precio Venta</th>
                   <th style={thStyle}>Inversion</th>
+                  <th style={thStyle}>Valor Salida</th>
+                  <th style={thStyle}>Cantidad</th>
                   <th style={thStyle}>RSI Compra</th>
                   <th style={thStyle}>RSI Venta</th>
-                  <th style={thStyle}>P&L</th>
-                  <th style={thStyle}>P&L %</th>
+                  <th style={thStyle}>P&L ($)</th>
+                  <th style={thStyle}>P&L (%)</th>
                 </tr>
               </thead>
               <tbody>
@@ -164,9 +173,12 @@ export default function TradeHistory({ refreshTrigger, user }) {
                     <td style={tdStyle}><strong>{t.symbol}</strong></td>
                     <td style={tdStyle}>{formatDate(t.openedAt)}</td>
                     <td style={tdStyle}>{formatDate(t.closedAt)}</td>
+                    <td style={tdStyle}>{formatDuration(t.openedAt, t.closedAt)}</td>
                     <td style={tdStyle}>${t.entryPrice?.toFixed(2)}</td>
                     <td style={tdStyle}>${t.exitPrice?.toFixed(2)}</td>
                     <td style={tdStyle}>${t.amount?.toFixed(2)}</td>
+                    <td style={tdStyle}>${t.exitValue?.toFixed(2)}</td>
+                    <td style={tdStyle}>{t.quantity?.toFixed(6)}</td>
                     <td style={tdStyle}>{t.rsiAtOpen?.toFixed(1) || '-'}</td>
                     <td style={tdStyle}>{t.rsiAtClose?.toFixed(1) || '-'}</td>
                     <td style={{ ...tdStyle, color: t.pnl >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 600 }}>{formatPnl(t.pnl)}</td>
@@ -214,6 +226,67 @@ function TokenSummary({ symbol, stats, active, onClick }) {
   );
 }
 
+// --- Export functions ---
+
+const EXPORT_COLUMNS = [
+  { key: 'symbol', label: 'Token' },
+  { key: 'openedAt', label: 'Fecha Apertura', fmt: v => v ? new Date(v).toLocaleString('es-ES') : '' },
+  { key: 'closedAt', label: 'Fecha Cierre', fmt: v => v ? new Date(v).toLocaleString('es-ES') : '' },
+  { key: 'duration', label: 'Duracion', fmt: (_, t) => formatDuration(t.openedAt, t.closedAt) },
+  { key: 'entryPrice', label: 'Precio Compra', fmt: v => v?.toFixed(2) || '' },
+  { key: 'exitPrice', label: 'Precio Venta', fmt: v => v?.toFixed(2) || '' },
+  { key: 'amount', label: 'Inversion ($)', fmt: v => v?.toFixed(2) || '' },
+  { key: 'exitValue', label: 'Valor Salida ($)', fmt: v => v?.toFixed(2) || '' },
+  { key: 'quantity', label: 'Cantidad', fmt: v => v?.toFixed(6) || '' },
+  { key: 'rsiAtOpen', label: 'RSI Compra', fmt: v => v?.toFixed(1) || '' },
+  { key: 'rsiAtClose', label: 'RSI Venta', fmt: v => v?.toFixed(1) || '' },
+  { key: 'pnl', label: 'P&L ($)', fmt: v => v?.toFixed(2) || '' },
+  { key: 'pnlPct', label: 'P&L (%)', fmt: v => v?.toFixed(2) || '' },
+];
+
+function buildRows(trades) {
+  return trades.map(t => EXPORT_COLUMNS.map(c => {
+    const raw = c.key === 'duration' ? null : t[c.key];
+    return c.fmt ? c.fmt(raw, t) : (raw ?? '');
+  }));
+}
+
+function exportCSV(trades) {
+  const header = EXPORT_COLUMNS.map(c => c.label).join(';');
+  const rows = buildRows(trades).map(r => r.join(';')).join('\n');
+  const csv = '﻿' + header + '\n' + rows;
+  downloadFile(csv, 'simulador_operaciones.csv', 'text/csv;charset=utf-8');
+}
+
+function exportExcel(trades) {
+  const headerRow = EXPORT_COLUMNS.map(c => `<td style="font-weight:bold;background:#f0f0f0">${c.label}</td>`).join('');
+  const dataRows = buildRows(trades).map(r =>
+    '<tr>' + r.map(v => `<td style="mso-number-format:\\@">${escapeHtml(String(v))}</td>`).join('') + '</tr>'
+  ).join('');
+
+  const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel">
+<head><meta charset="utf-8"><!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>Operaciones</x:Name></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]--></head>
+<body><table><tr>${headerRow}</tr>${dataRows}</table></body></html>`;
+
+  downloadFile(html, 'simulador_operaciones.xls', 'application/vnd.ms-excel');
+}
+
+function escapeHtml(str) {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function downloadFile(content, filename, mimeType) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// --- Formatters ---
+
 function formatPnl(val) {
   if (val === null || val === undefined) return '-';
   return val >= 0 ? `+$${val.toFixed(2)}` : `-$${Math.abs(val).toFixed(2)}`;
@@ -222,7 +295,18 @@ function formatPnl(val) {
 function formatDate(iso) {
   if (!iso) return '-';
   const d = new Date(iso);
-  return d.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+function formatDuration(from, to) {
+  if (!from || !to) return '-';
+  const ms = new Date(to) - new Date(from);
+  if (ms < 0) return '-';
+  const hours = Math.floor(ms / 3600000);
+  const days = Math.floor(hours / 24);
+  if (days > 0) return `${days}d ${hours % 24}h`;
+  if (hours > 0) return `${hours}h ${Math.floor((ms % 3600000) / 60000)}m`;
+  return `${Math.floor(ms / 60000)}m`;
 }
 
 const tableStyle = { width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' };
