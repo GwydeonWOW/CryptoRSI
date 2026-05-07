@@ -169,12 +169,18 @@ async function checkAndNotify(rsiDataArray, settings) {
   const backupChatId = process.env.TELEGRAM_CHAT_ID;
   const useBackup = !!(backupToken && backupChatId);
 
-  if (!webEnabled && !useBackup) return;
+  if (!webEnabled && !useBackup) {
+    console.log('  [TG-ALERT] SKIPPED: no channel configured (webEnabled=' + webEnabled + ', useBackup=' + useBackup + ')');
+    return;
+  }
 
   const alertGeneric = settings.alerts?.generic || {};
   const tokenAlerts = settings.alerts?.tokens || {};
   const cooldownMs = (alertGeneric.cooldownMinutes || 240) * 60 * 1000;
   const now = Date.now();
+  const alertTf = alertGeneric.alertTimeframe || '1d';
+
+  console.log(`  [TG-ALERT] Checking ${rsiDataArray.length} tokens | TF: ${alertTf} | Oversold: <=${alertGeneric.rsiOversold || 30} | Cooldown: ${cooldownMs / 60000}min | web: ${webEnabled} | backup: ${useBackup}`);
 
   for (const token of rsiDataArray) {
     if (!token.primaryRSI || !token.recommendation) continue;
@@ -241,7 +247,9 @@ async function checkAndNotify(rsiDataArray, settings) {
     if (alertRSI <= alertConfig.rsiOversold) {
       const key = `buy:${symbol}`;
       const lastSent = cooldownStore.get(key);
-      if (!(lastSent && now - lastSent < cooldownMs)) {
+      const blocked = lastSent && now - lastSent < cooldownMs;
+      console.log(`  [TG-ALERT] OVERSOLD ${symbol} | RSI ${alertRSI.toFixed(1)} (${alertTf}) | blocked=${blocked}${blocked ? ` (${Math.round((cooldownMs - (now - lastSent)) / 60000)}min left)` : ''}`);
+      if (!blocked) {
 
         const text =
           `🟢 <b>SOBREVENTA</b> — ${name || symbol}\n\n` +
@@ -260,7 +268,9 @@ async function checkAndNotify(rsiDataArray, settings) {
     if (alertRSI >= alertConfig.rsiOverbought) {
       const key = `sell:${symbol}`;
       const lastSent = cooldownStore.get(key);
-      if (!(lastSent && now - lastSent < cooldownMs)) {
+      const blocked = lastSent && now - lastSent < cooldownMs;
+      console.log(`  [TG-ALERT] OVERBOUGHT ${symbol} | RSI ${alertRSI.toFixed(1)} (${alertTf}) | blocked=${blocked}${blocked ? ` (${Math.round((cooldownMs - (now - lastSent)) / 60000)}min left)` : ''}`);
+      if (!blocked) {
 
         const text =
           `🔴 <b>SOBRECOMPRA</b> — ${name || symbol}\n\n` +

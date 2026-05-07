@@ -82,12 +82,18 @@ function buildBaseEmbed(token, alertRSI, alertTf) {
 
 async function checkAndNotifyDiscord(rsiDataArray, settings) {
   const { webhookUrl, enabled } = settings.discord || {};
-  if (!enabled || !webhookUrl) return;
+  if (!enabled || !webhookUrl) {
+    console.log('  [DC-ALERT] SKIPPED: discord not configured (enabled=' + enabled + ')');
+    return;
+  }
 
   const alertGeneric = settings.alerts?.generic || {};
   const tokenAlerts = settings.alerts?.tokens || {};
   const cooldownMs = (alertGeneric.cooldownMinutes || 240) * 60 * 1000;
   const now = Date.now();
+  const alertTf = alertGeneric.alertTimeframe || '1d';
+
+  console.log(`  [DC-ALERT] Checking ${rsiDataArray.length} tokens | TF: ${alertTf} | Oversold: <=${alertGeneric.rsiOversold || 30}`);
 
   for (const token of rsiDataArray) {
     if (!token.primaryRSI || !token.recommendation) continue;
@@ -156,7 +162,9 @@ async function checkAndNotifyDiscord(rsiDataArray, settings) {
     if (alertRSI <= alertConfig.rsiOversold) {
       const key = `discord_buy:${symbol}`;
       const lastSent = cooldownStore.get(key);
-      if (!(lastSent && now - lastSent < cooldownMs)) {
+      const blocked = lastSent && now - lastSent < cooldownMs;
+      console.log(`  [DC-ALERT] OVERSOLD ${symbol} | RSI ${alertRSI.toFixed(1)} (${alertTf}) | blocked=${blocked}${blocked ? ` (${Math.round((cooldownMs - (now - lastSent)) / 60000)}min left)` : ''}`);
+      if (!blocked) {
 
         const embed = {
           ...buildBaseEmbed(token, alertRSI, alertTf),
@@ -178,7 +186,9 @@ async function checkAndNotifyDiscord(rsiDataArray, settings) {
     if (alertRSI >= alertConfig.rsiOverbought) {
       const key = `discord_sell:${symbol}`;
       const lastSent = cooldownStore.get(key);
-      if (!(lastSent && now - lastSent < cooldownMs)) {
+      const blocked = lastSent && now - lastSent < cooldownMs;
+      console.log(`  [DC-ALERT] OVERBOUGHT ${symbol} | RSI ${alertRSI.toFixed(1)} (${alertTf}) | blocked=${blocked}${blocked ? ` (${Math.round((cooldownMs - (now - lastSent)) / 60000)}min left)` : ''}`);
+      if (!blocked) {
 
         const embed = {
           ...buildBaseEmbed(token, alertRSI, alertTf),
