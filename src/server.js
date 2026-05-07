@@ -637,28 +637,45 @@ const AUTO_TRADE_AMOUNT = 1000;
 function runAutoTrader(rsiDataArray, settings) {
   const alertGeneric = settings.alerts?.generic || {};
   const tokenAlerts = settings.alerts?.tokens || {};
+  const alertTf = alertGeneric.alertTimeframe || '1d';
+
+  console.log(`  [AUTO-TRADE] Checking ${rsiDataArray.length} tokens | TF: ${alertTf} | Oversold: <=${alertGeneric.rsiOversold || 30} | Overbought: >=${alertGeneric.rsiOverbought || 70}`);
 
   for (const token of rsiDataArray) {
     if (!token.primaryRSI || token.error) continue;
 
     const alertConfig = { ...alertGeneric, ...(tokenAlerts[token.symbol] || {}) };
-    const alertTf = alertConfig.alertTimeframe || '1d';
-    const alertRSI = token.timeframes?.[alertTf]?.rsi || token.primaryRSI;
+    const tokenTf = alertConfig.alertTimeframe || '1d';
+    const alertRSI = token.timeframes?.[tokenTf]?.rsi || token.primaryRSI;
+
+    const tfSummary = ['15m', '1h', '4h', '1d']
+      .map(tf => `${tf}:${token.timeframes?.[tf]?.rsi?.toFixed(1) ?? '-'}`)
+      .join(' | ');
 
     // Buy signal: oversold + no open position
-    if (alertRSI <= alertConfig.rsiOversold && !hasOpenPosition(AUTO_TRADER_USER, token.symbol)) {
-      const result = openPosition(AUTO_TRADER_USER, token.symbol, token.price, alertRSI, AUTO_TRADE_AMOUNT);
-      if (result.success) {
-        console.log(`  [AUTO-TRADE] BUY ${token.symbol} @ $${token.price?.toFixed(2)} | RSI ${alertRSI.toFixed(1)} (${alertTf}) | $${AUTO_TRADE_AMOUNT}`);
+    if (alertRSI <= (alertConfig.rsiOversold || 30)) {
+      if (!hasOpenPosition(AUTO_TRADER_USER, token.symbol)) {
+        const result = openPosition(AUTO_TRADER_USER, token.symbol, token.price, alertRSI, AUTO_TRADE_AMOUNT);
+        if (result.success) {
+          console.log(`  [AUTO-TRADE] BUY ${token.symbol} @ $${token.price?.toFixed(2)} | RSI ${alertRSI.toFixed(1)} (${tokenTf}) | $${AUTO_TRADE_AMOUNT}`);
+        } else {
+          console.log(`  [AUTO-TRADE] BUY FAILED ${token.symbol}: ${result.message}`);
+        }
+      } else {
+        console.log(`  [AUTO-TRADE] SKIP BUY ${token.symbol} | RSI ${alertRSI.toFixed(1)} (${tokenTf}) <= ${alertConfig.rsiOversold || 30} but position already open`);
       }
     }
 
     // Sell signal: overbought + has open position
-    if (alertRSI >= alertConfig.rsiOverbought && hasOpenPosition(AUTO_TRADER_USER, token.symbol)) {
-      const result = closePosition(AUTO_TRADER_USER, token.symbol, token.price, alertRSI);
-      if (result.success) {
-        const pnlStr = result.trade.pnl >= 0 ? `+$${result.trade.pnl.toFixed(2)}` : `-$${Math.abs(result.trade.pnl).toFixed(2)}`;
-        console.log(`  [AUTO-TRADE] SELL ${token.symbol} @ $${token.price?.toFixed(2)} | RSI ${alertRSI.toFixed(1)} (${alertTf}) | ${pnlStr} (${result.trade.pnlPct.toFixed(1)}%)`);
+    if (alertRSI >= (alertConfig.rsiOverbought || 70)) {
+      if (hasOpenPosition(AUTO_TRADER_USER, token.symbol)) {
+        const result = closePosition(AUTO_TRADER_USER, token.symbol, token.price, alertRSI);
+        if (result.success) {
+          const pnlStr = result.trade.pnl >= 0 ? `+$${result.trade.pnl.toFixed(2)}` : `-$${Math.abs(result.trade.pnl).toFixed(2)}`;
+          console.log(`  [AUTO-TRADE] SELL ${token.symbol} @ $${token.price?.toFixed(2)} | RSI ${alertRSI.toFixed(1)} (${tokenTf}) | ${pnlStr} (${result.trade.pnlPct.toFixed(1)}%)`);
+        }
+      } else {
+        console.log(`  [AUTO-TRADE] SKIP SELL ${token.symbol} | RSI ${alertRSI.toFixed(1)} (${tokenTf}) >= ${alertConfig.rsiOverbought || 70} but no open position`);
       }
     }
   }
