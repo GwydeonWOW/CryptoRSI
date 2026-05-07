@@ -416,6 +416,72 @@ app.get('/api/trade/auto-stats', authMiddleware, adminMiddleware, async (req, re
 });
 
 /**
+ * GET /api/trade/auto-debug - Diagnostic: shows exactly what auto-trader sees
+ */
+app.get('/api/trade/auto-debug', authMiddleware, adminMiddleware, async (req, res) => {
+  const settings = loadSettings();
+  const alertGeneric = settings.alerts?.generic || {};
+  const alertTf = alertGeneric.alertTimeframe || '1d';
+
+  const tokens = loadTokens();
+  const timeframes = ['15m', '1h', '4h', '1d'];
+
+  const diagnostics = await Promise.allSettled(
+    tokens.map(async (token) => {
+      try {
+        const candlesByTimeframe = {};
+        const fetches = timeframes.map(async tf => {
+          try {
+            const { candles } = await fetchCandles(token.symbol, tf);
+            return { tf, closes: candles.map(c => c.close) };
+          } catch (e) { return { tf, closes: [] }; }
+        });
+        const results = await Promise.all(fetches);
+        for (const r of results) {
+          if (r.closes.length > 0) candlesByTimeframe[r.tf] = r.closes;
+        }
+        const rsiData = calculateMultiTimeframeRSI(candlesByTimeframe, 14);
+        const { price } = await fetchCurrentPrice(token.symbol);
+
+        const allTfRSI = {};
+        for (const tf of timeframes) {
+          allTfRSI[tf] = rsiData[tf]?.rsi ?? null;
+        }
+
+        const alertRSI = rsiData[alertTf]?.rsi ?? null;
+        const hasPos = hasOpenPosition(AUTO_TRADER_USER, token.symbol);
+
+        return {
+          symbol: token.symbol,
+          price,
+          rsiByTimeframe: allTfRSI,
+          alertTimeframe: alertTf,
+          alertRSI,
+          rsiOversold: alertGeneric.rsiOversold || 30,
+          rsiOverbought: alertGeneric.rsiOverbought || 70,
+          hasOpenPosition: hasPos,
+          wouldBuy: alertRSI !== null && alertRSI <= (alertGeneric.rsiOversold || 30) && !hasPos,
+          wouldSell: alertRSI !== null && alertRSI >= (alertGeneric.rsiOverbought || 70) && hasPos,
+        };
+      } catch (e) {
+        return { symbol: token.symbol, error: e.message };
+      }
+    })
+  );
+
+  res.json({
+    configuredTimeframe: alertTf,
+    settings: {
+      rsiOversold: alertGeneric.rsiOversold || 30,
+      rsiOverbought: alertGeneric.rsiOverbought || 70,
+      cooldownMinutes: alertGeneric.cooldownMinutes || 240,
+      alertTimeframe: alertGeneric.alertTimeframe || '1d (default)',
+    },
+    tokens: diagnostics.map(r => r.status === 'fulfilled' ? r.value : { error: r.reason?.message }),
+  });
+});
+
+/**
  * DELETE /api/trade/auto-reset - Reset auto-trader data (supreme admin only)
  */
 app.delete('/api/trade/auto-reset', authMiddleware, adminMiddleware, (req, res) => {
