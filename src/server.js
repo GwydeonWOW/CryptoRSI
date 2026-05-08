@@ -6,10 +6,11 @@ const { fetchCandles, fetchCurrentPrice, calculateSMA } = require('./api');
 const { loadTokens, addToken, removeToken } = require('./config');
 const { openPosition, closePosition, getOpenPositions, getOpenPosition, hasOpenPosition, getHistory, getStats } = require('./trades');
 const { getMarketAnalysis } = require('./futures');
-const { checkAndNotify, startBotPolling } = require('./telegram');
-const { checkAndNotifyDiscord, sendDiscordMessage } = require('./discord');
+const { checkAndNotify, startBotPolling, sendAlert: sendTelegramAlert } = require('./telegram');
+const { checkAndNotifyDiscord, sendDiscordMessage, sendAlert: sendDiscordAlert } = require('./discord');
 const { authMiddleware, adminMiddleware, generateToken, verifyPassword } = require('./auth');
 const { loadSettings, saveSettings, getAlertConfig, setTokenAlerts, removeTokenAlerts, getMaskedSettings, getSimulationConfig, saveSimulationConfig } = require('./settings');
+const cooldownStore = require('./cooldownStore');
 const { ensureAdmin, listUsers, getUserByUsername, createUser, deleteUser, updateUser } = require('./users');
 const {
   saveRSISnapshot, getRSIHistory,
@@ -860,6 +861,121 @@ async function runAutoTrader(rsiDataArray, settings) {
   }
 }
 
+// ============================================================
+// Centralized alert dispatcher — single cooldown for both channels
+// ============================================================
+
+function buildAlertQueue(rsiDataArray, settings) {
+  const alertGeneric = settings.alerts?.generic || {};
+  const tokenAlerts = settings.alerts?.tokens || {};
+  const cooldownMs = (alertGeneric.cooldownMinutes || 240) * 60 * 1000;
+  const now = Date.now();
+
+  const queue = [];
+
+  for (const token of rsiDataArray) {
+    if (!token.primaryRSI || !token.recommendation) continue;
+
+    const { symbol } = token;
+    const divergence = token.divergence;
+    const alertConfig = { ...alertGeneric, ...(tokenAlerts[symbol] || {}) };
+    const alertTf = alertConfig.alertTimeframe || '1d';
+    const alertRSI = token.timeframes?.[alertTf]?.rsi || token.primaryRSI;
+
+    // Bullish divergence
+    if (alertConfig.divergenceBullish && divergence?.bullish && alertRSI <= 40) {
+      const key = `bull:${symbol}`;
+      const lastSent = cooldownStore.get(key);
+      if (!(lastSent && now - lastSent < cooldownMs)) {
+        queue.push({ type: 'bull', key, token, alertRSI, alertTf, alertConfig });
+      }
+    }
+
+    // Bearish divergence
+    if (alertConfig.divergenceBearish && divergence?.bearish && alertRSI >= 60) {
+      const key = `bear:${symbol}`;
+      const lastSent = cooldownStore.get(key);
+      if (!(lastSent && now - lastSent < cooldownMs)) {
+        queue.push({ type: 'bear', key, token, alertRSI, alertTf, alertConfig });
+      }
+    }
+
+    // Oversold
+    if (alertRSI <= (alertConfig.rsiOversold || 30)) {
+      const key = `buy:${symbol}`;
+      const lastSent = cooldownStore.get(key);
+      const blocked = lastSent && now - lastSent < cooldownMs;
+      console.log(`  [ALERT] OVERSOLD ${symbol} | RSI ${alertRSI.toFixed(1)} (${alertTf}) | blocked=${blocked}${blocked ? ` (${Math.round((cooldownMs - (now - lastSent)) / 60000)}min left)` : ''}`);
+      if (!blocked) {
+        queue.push({ type: 'oversold', key, token, alertRSI, alertTf, alertConfig });
+      }
+    }
+
+    // Overbought
+    if (alertRSI >= (alertConfig.rsiOverbought || 70)) {
+      const key = `sell:${symbol}`;
+      const lastSent = cooldownStore.get(key);
+      const blocked = lastSent && now - lastSent < cooldownMs;
+      console.log(`  [ALERT] OVERBOUGHT ${symbol} | RSI ${alertRSI.toFixed(1)} (${alertTf}) | blocked=${blocked}${blocked ? ` (${Math.round((cooldownMs - (now - lastSent)) / 60000)}min left)` : ''}`);
+      if (!blocked) {
+        queue.push({ type: 'overbought', key, token, alertRSI, alertTf, alertConfig });
+      }
+    }
+  }
+
+  return queue;
+}
+
+async function dispatchAlerts(rsiDataArray, settings) {
+  const tg = settings.telegram || {};
+  const dc = settings.discord || {};
+  const tgWebEnabled = tg.enabled && tg.botToken && tg.chatId;
+  const tgBackupToken = process.env.TELEGRAM_BOT_TOKEN;
+  const tgBackupChatId = process.env.TELEGRAM_CHAT_ID;
+  const tgUseBackup = !!(tgBackupToken && tgBackupChatId);
+  const dcEnabled = dc.enabled && dc.webhookUrl;
+
+  if (!tgWebEnabled && !tgUseBackup && !dcEnabled) {
+    console.log('  [ALERT] SKIPPED: no channel configured');
+    return;
+  }
+
+  const queue = buildAlertQueue(rsiDataArray, settings);
+
+  if (queue.length === 0) return;
+
+  console.log(`  [ALERT] Dispatching ${queue.length} alerts (TG: ${tgWebEnabled || tgUseBackup}, DC: ${dcEnabled})`);
+
+  for (const alert of queue) {
+    let anySent = false;
+    const { type, key, token, alertRSI, alertTf, alertConfig } = alert;
+
+    // Telegram
+    if (tgWebEnabled) {
+      const sent = await sendTelegramAlert(type, token, alertRSI, alertTf, alertConfig, tg.chatId, tg.botToken);
+      if (sent) anySent = true;
+    }
+    if (tgUseBackup) {
+      const sent = await sendTelegramAlert(type, token, alertRSI, alertTf, alertConfig, tgBackupChatId, tgBackupToken);
+      if (sent) anySent = true;
+    }
+
+    // Discord
+    if (dcEnabled) {
+      const sent = await sendDiscordAlert(type, token, alertRSI, alertTf, alertConfig, dc.webhookUrl);
+      if (sent) anySent = true;
+    }
+
+    // Set global cooldown if at least one channel succeeded
+    if (anySent) {
+      cooldownStore.set(key, Date.now());
+      console.log(`  [ALERT] SENT ${type} ${token.symbol} | RSI ${alertRSI.toFixed(1)} (${alertTf})`);
+    } else {
+      console.log(`  [ALERT] FAILED ${type} ${token.symbol} | all channels failed — cooldown NOT set (will retry next tick)`);
+    }
+  }
+}
+
 async function collectSnapshot() {
   console.log(`[${new Date().toISOString()}] Collecting data snapshot...`);
 
@@ -949,10 +1065,9 @@ async function collectSnapshot() {
       if (extremes.length > 0) {
         console.log(`  RSI extremes: ${extremes.map(t => `${t.symbol}(${t.primaryRSI?.toFixed(1)})`).join(', ')}`);
       }
-      // Send notifications via Telegram and Discord
+      // Send notifications via centralized dispatcher (single cooldown for both channels)
       const settings = loadSettings();
-      checkAndNotify(rsiDataArray, settings);
-      checkAndNotifyDiscord(rsiDataArray, settings);
+      await dispatchAlerts(rsiDataArray, settings);
 
       // Auto-trader: buy on oversold, sell on overbought
       await runAutoTrader(rsiDataArray, settings);

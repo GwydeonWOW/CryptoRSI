@@ -226,4 +226,84 @@ async function checkAndNotifyDiscord(rsiDataArray, settings) {
   }
 }
 
-module.exports = { sendDiscordMessage, checkAndNotifyDiscord };
+// ============================================================
+// Single alert sender (no cooldown logic — managed by dispatcher)
+// ============================================================
+
+async function sendAlert(type, token, alertRSI, alertTf, alertConfig, webhookUrl) {
+  const { symbol } = token;
+  const divergence = token.divergence;
+  const rsi1d = token.timeframes?.['1d']?.rsi;
+  const rsi4h = token.timeframes?.['4h']?.rsi;
+  const rsi1h = token.timeframes?.['1h']?.rsi;
+  const rsi15m = token.timeframes?.['15m']?.rsi;
+  const tfField = buildTimeframeField(rsi15m, rsi1h, rsi4h, rsi1d);
+
+  const sma200 = token.sma200;
+  const sma200Field = sma200 ? {
+    name: 'SMA 200',
+    value: `**${fmtPrice(sma200)}** ${token.price >= sma200 ? '📈 Encima' : '📉 Debajo'}`,
+    inline: true,
+  } : null;
+
+  let embed;
+
+  if (type === 'bull') {
+    const strengthLabel = divergence.strength === 'strong' ? 'FUERTE' : divergence.strength === 'normal' ? 'Normal' : 'Debil';
+    embed = {
+      ...buildBaseEmbed(token, alertRSI, alertTf),
+      color: COLORS.green,
+      author: { name: `${RSI_EMOJI.bullishDiv} DIVERGENCIA ALCISTA` },
+      description: `${divergence.reason || 'Precio baja pero RSI sube'}\nFuerza: **${strengthLabel}**`,
+      fields: [
+        ...buildBaseEmbed(token, alertRSI, alertTf).fields,
+        sma200Field,
+        { name: 'RSI por timeframe', value: tfField, inline: false },
+        { name: 'Senal', value: 'Compra: la presion vendedora se debilita. Posible rebote alcista.', inline: false },
+      ].filter(Boolean),
+    };
+  } else if (type === 'bear') {
+    const strengthLabel = divergence.strength === 'strong' ? 'FUERTE' : divergence.strength === 'normal' ? 'Normal' : 'Debil';
+    embed = {
+      ...buildBaseEmbed(token, alertRSI, alertTf),
+      color: COLORS.red,
+      author: { name: `${RSI_EMOJI.bearishDiv} DIVERGENCIA BAJISTA` },
+      description: `${divergence.reason || 'Precio sube pero RSI baja'}\nFuerza: **${strengthLabel}**`,
+      fields: [
+        ...buildBaseEmbed(token, alertRSI, alertTf).fields,
+        sma200Field,
+        { name: 'RSI por timeframe', value: tfField, inline: false },
+        { name: 'Senal', value: 'Venta: la presion compradora se debilita. Posible correccion bajista.', inline: false },
+      ].filter(Boolean),
+    };
+  } else if (type === 'oversold') {
+    embed = {
+      ...buildBaseEmbed(token, alertRSI, alertTf),
+      color: COLORS.green,
+      author: { name: `${RSI_EMOJI.oversold} SOBREVENTA` },
+      description: `RSI en zona de sobreventa (<=${alertConfig.rsiOversold || 30}).`,
+      fields: [
+        ...buildBaseEmbed(token, alertRSI, alertTf).fields,
+        sma200Field,
+        { name: 'RSI por timeframe', value: tfField, inline: false },
+      ].filter(Boolean),
+    };
+  } else if (type === 'overbought') {
+    embed = {
+      ...buildBaseEmbed(token, alertRSI, alertTf),
+      color: COLORS.red,
+      author: { name: `${RSI_EMOJI.overbought} SOBRECOMPRA` },
+      description: `RSI en zona de sobrecompra (>=${alertConfig.rsiOverbought || 70}).`,
+      fields: [
+        ...buildBaseEmbed(token, alertRSI, alertTf).fields,
+        sma200Field,
+        { name: 'RSI por timeframe', value: tfField, inline: false },
+      ].filter(Boolean),
+    };
+  }
+
+  if (!embed) return false;
+  return await sendDiscordEmbed(embed, webhookUrl);
+}
+
+module.exports = { sendDiscordMessage, checkAndNotifyDiscord, sendAlert };
