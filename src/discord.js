@@ -110,6 +110,13 @@ async function checkAndNotifyDiscord(rsiDataArray, settings) {
     const alertRSI = token.timeframes?.[alertTf]?.rsi || token.primaryRSI;
     const tfField = buildTimeframeField(rsi15m, rsi1h, rsi4h, rsi1d);
 
+    const sma200 = token.sma200;
+    const sma200Field = sma200 ? {
+      name: 'SMA 200',
+      value: `**$${sma200.toLocaleString('en-US', { maximumFractionDigits: 0 })}** ${token.price >= sma200 ? '📈 Encima' : '📉 Debajo'}`,
+      inline: true,
+    } : null;
+
     // Bullish divergence
     if (alertConfig.divergenceBullish && divergence?.bullish && alertRSI <= 40) {
       const key = `discord_bull:${symbol}`;
@@ -124,9 +131,10 @@ async function checkAndNotifyDiscord(rsiDataArray, settings) {
           description: `${divergence.reason || 'Precio baja pero RSI sube'}\nFuerza: **${strengthLabel}**`,
           fields: [
             ...buildBaseEmbed(token, alertRSI, alertTf).fields,
+            sma200Field,
             { name: 'RSI por timeframe', value: tfField, inline: false },
             { name: 'Senal', value: 'Compra: la presion vendedora se debilita. Posible rebote alcista.', inline: false },
-          ],
+          ].filter(Boolean),
         };
 
         const sent = await sendDiscordEmbed(embed, webhookUrl);
@@ -148,9 +156,10 @@ async function checkAndNotifyDiscord(rsiDataArray, settings) {
           description: `${divergence.reason || 'Precio sube pero RSI baja'}\nFuerza: **${strengthLabel}**`,
           fields: [
             ...buildBaseEmbed(token, alertRSI, alertTf).fields,
+            sma200Field,
             { name: 'RSI por timeframe', value: tfField, inline: false },
             { name: 'Senal', value: 'Venta: la presion compradora se debilita. Posible correccion bajista.', inline: false },
-          ],
+          ].filter(Boolean),
         };
 
         const sent = await sendDiscordEmbed(embed, webhookUrl);
@@ -173,8 +182,9 @@ async function checkAndNotifyDiscord(rsiDataArray, settings) {
           description: `RSI en zona de sobreventa (<=${alertConfig.rsiOversold}).`,
           fields: [
             ...buildBaseEmbed(token, alertRSI, alertTf).fields,
+            sma200Field,
             { name: 'RSI por timeframe', value: tfField, inline: false },
-          ],
+          ].filter(Boolean),
         };
 
         const sent = await sendDiscordEmbed(embed, webhookUrl);
@@ -197,8 +207,9 @@ async function checkAndNotifyDiscord(rsiDataArray, settings) {
           description: `RSI en zona de sobrecompra (>=${alertConfig.rsiOverbought}).`,
           fields: [
             ...buildBaseEmbed(token, alertRSI, alertTf).fields,
+            sma200Field,
             { name: 'RSI por timeframe', value: tfField, inline: false },
-          ],
+          ].filter(Boolean),
         };
 
         const sent = await sendDiscordEmbed(embed, webhookUrl);

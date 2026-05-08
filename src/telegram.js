@@ -192,6 +192,9 @@ async function checkAndNotify(rsiDataArray, settings) {
     const rsi1h = token.timeframes?.['1h']?.rsi;
     const rsi15m = token.timeframes?.['15m']?.rsi;
     const priceStr = price?.toLocaleString('en-US', { maximumFractionDigits: 2 }) || '?';
+    const sma200 = token.sma200;
+    const sma200Str = sma200 ? `$${sma200.toLocaleString('en-US', { maximumFractionDigits: 0 })}` : null;
+    const sma200Label = sma200 ? `${price >= sma200 ? '📈' : '📉'} SMA 200: <b>${sma200Str}</b> (${price >= sma200 ? 'encima' : 'debajo'})\n` : '';
 
     const alertConfig = { ...alertGeneric, ...(tokenAlerts[symbol] || {}) };
     const alertTf = alertConfig.alertTimeframe || '1d';
@@ -211,7 +214,8 @@ async function checkAndNotify(rsiDataArray, settings) {
           `📊 RSI: <b>${alertRSI.toFixed(1)}</b> (${alertTf})\n` +
           `💰 Precio: <b>$${priceStr}</b>\n\n` +
           `RSI por timeframe:\n` +
-          `   15m: ${rsi15m?.toFixed(1) || '-'}  |  1H: ${rsi1h?.toFixed(1) || '-'}  |  4H: ${rsi4h?.toFixed(1) || '-'}  |  1D: ${rsi1d?.toFixed(1) || '-'}\n\n` +
+          `   15m: ${rsi15m?.toFixed(1) || '-'}  |  1H: ${rsi1h?.toFixed(1) || '-'}  |  4H: ${rsi4h?.toFixed(1) || '-'}  |  1D: ${rsi1d?.toFixed(1) || '-'}\n` +
+          sma200Label + '\n' +
           `⚡ Señal de compra: la presion vendedora se debilita. Posible rebote alcista.`;
 
         if (webEnabled) await sendTelegramMessage(text, tg.chatId, tg.botToken);
@@ -234,7 +238,8 @@ async function checkAndNotify(rsiDataArray, settings) {
           `📊 RSI: <b>${alertRSI.toFixed(1)}</b> (${alertTf})\n` +
           `💰 Precio: <b>$${priceStr}</b>\n\n` +
           `RSI por timeframe:\n` +
-          `   15m: ${rsi15m?.toFixed(1) || '-'}  |  1H: ${rsi1h?.toFixed(1) || '-'}  |  4H: ${rsi4h?.toFixed(1) || '-'}  |  1D: ${rsi1d?.toFixed(1) || '-'}\n\n` +
+          `   15m: ${rsi15m?.toFixed(1) || '-'}  |  1H: ${rsi1h?.toFixed(1) || '-'}  |  4H: ${rsi4h?.toFixed(1) || '-'}  |  1D: ${rsi1d?.toFixed(1) || '-'}\n` +
+          sma200Label + '\n' +
           `⚠️ Señal de venta: la presion compradora se debilita. Posible correccion bajista.`;
 
         if (webEnabled) await sendTelegramMessage(text, tg.chatId, tg.botToken);
@@ -255,7 +260,8 @@ async function checkAndNotify(rsiDataArray, settings) {
           `🟢 <b>SOBREVENTA</b> — ${name || symbol}\n\n` +
           `📊 RSI: <b>${alertRSI.toFixed(1)}</b> (${alertTf})\n` +
           `💰 Precio: <b>$${priceStr}</b>\n\n` +
-          `⏱ 15m: ${rsi15m?.toFixed(1) || '-'}  |  1H: ${rsi1h?.toFixed(1) || '-'}  |  4H: ${rsi4h?.toFixed(1) || '-'}  |  1D: ${rsi1d?.toFixed(1) || '-'}\n\n` +
+          `⏱ 15m: ${rsi15m?.toFixed(1) || '-'}  |  1H: ${rsi1h?.toFixed(1) || '-'}  |  4H: ${rsi4h?.toFixed(1) || '-'}  |  1D: ${rsi1d?.toFixed(1) || '-'}\n` +
+          sma200Label + '\n' +
           `⚡ RSI en zona de sobreventa (≤${alertConfig.rsiOversold}).`;
 
         if (webEnabled) await sendTelegramMessage(text, tg.chatId, tg.botToken);
@@ -276,7 +282,8 @@ async function checkAndNotify(rsiDataArray, settings) {
           `🔴 <b>SOBRECOMPRA</b> — ${name || symbol}\n\n` +
           `📊 RSI: <b>${alertRSI.toFixed(1)}</b> (${alertTf})\n` +
           `💰 Precio: <b>$${priceStr}</b>\n\n` +
-          `⏱ 15m: ${rsi15m?.toFixed(1) || '-'}  |  1H: ${rsi1h?.toFixed(1) || '-'}  |  4H: ${rsi4h?.toFixed(1) || '-'}  |  1D: ${rsi1d?.toFixed(1) || '-'}\n\n` +
+          `⏱ 15m: ${rsi15m?.toFixed(1) || '-'}  |  1H: ${rsi1h?.toFixed(1) || '-'}  |  4H: ${rsi4h?.toFixed(1) || '-'}  |  1D: ${rsi1d?.toFixed(1) || '-'}\n` +
+          sma200Label + '\n' +
           `⚠️ RSI en zona de sobrecompra (≥${alertConfig.rsiOverbought}).`;
 
         if (webEnabled) await sendTelegramMessage(text, tg.chatId, tg.botToken);
