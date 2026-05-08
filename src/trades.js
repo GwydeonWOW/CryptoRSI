@@ -47,7 +47,7 @@ function openPosition(userId, symbol, price, rsiData, amount = 100, timeframe = 
   const upper = symbol.toUpperCase();
 
   // 1 position per (symbol, timeframe)
-  const existing = trades.positions.find(p => p.symbol === upper && p.timeframe === timeframe);
+  const existing = trades.positions.find(p => p.symbol === upper && (p.timeframe === timeframe || (!p.timeframe && timeframe === '1d')));
   if (existing) {
     return { success: false, message: `Ya tienes una posicion abierta en ${upper} (${timeframe})` };
   }
@@ -135,16 +135,17 @@ function getOpenPositions(userId) {
 
 function getOpenPosition(userId, symbol, timeframe) {
   const trades = loadTrades(userId);
-  return trades.positions.find(p => p.symbol === symbol.toUpperCase() && p.timeframe === timeframe) || null;
+  const upper = symbol.toUpperCase();
+  return trades.positions.find(p => p.symbol === upper && (p.timeframe === timeframe || (!p.timeframe && timeframe === '1d'))) || null;
 }
 
 function hasOpenPosition(userId, symbol, timeframe) {
   const trades = loadTrades(userId);
+  const upper = symbol.toUpperCase();
   if (timeframe) {
-    return trades.positions.some(p => p.symbol === symbol.toUpperCase() && p.timeframe === timeframe);
+    return trades.positions.some(p => p.symbol === upper && (p.timeframe === timeframe || (!p.timeframe && timeframe === '1d')));
   }
-  // Backwards compat: no timeframe = check any position for symbol
-  return trades.positions.some(p => p.symbol === symbol.toUpperCase());
+  return trades.positions.some(p => p.symbol === upper);
 }
 
 function getHistory(userId) {
