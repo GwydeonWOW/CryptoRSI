@@ -97,12 +97,12 @@ app.get('/api/rsi/:symbol', async (req, res) => {
     // Get current price
     const { price, source: priceSource } = await fetchCurrentPrice(symbol);
 
-    // SMA 200 (daily)
+    // SMA 200 (1h candles)
     let sma200 = null;
     try {
-      const { candles: dailyCandles } = await fetchCandles(symbol, '1d', 250);
-      const dailyCloses = dailyCandles.map(c => c.close);
-      sma200 = calculateSMA(dailyCloses, 200);
+      const { candles: hourlyCandles } = await fetchCandles(symbol, '1h', 250);
+      const hourlyCloses = hourlyCandles.map(c => c.close);
+      sma200 = calculateSMA(hourlyCloses, 200);
     } catch (e) { /* SMA unavailable */ }
 
     // Primary RSI: use shortest available timeframe for most current reading
@@ -181,12 +181,12 @@ app.get('/api/rsi', async (req, res) => {
         const { price } = await fetchCurrentPrice(token.symbol);
         const sparkline = (getPriceHistory(token.symbol, 1) || []).map(s => s.price);
 
-        // SMA 200 (daily)
+        // SMA 200 (1h candles)
         let sma200 = null;
         try {
-          const { candles: dailyCandles } = await fetchCandles(token.symbol, '1d', 250);
-          const dailyCloses = dailyCandles.map(c => c.close);
-          sma200 = calculateSMA(dailyCloses, 200);
+          const { candles: hourlyCandles } = await fetchCandles(token.symbol, '1h', 250);
+          const hourlyCloses = hourlyCandles.map(c => c.close);
+          sma200 = calculateSMA(hourlyCloses, 200);
         } catch (e) { /* SMA unavailable */ }
 
         // Primary RSI: shortest timeframe for most current reading
