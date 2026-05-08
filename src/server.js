@@ -24,6 +24,11 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
+// Shared last-snapshot store: reuse collectSnapshot data for HTTP endpoints
+let lastSnapshot = null;
+let lastSnapshotTime = 0;
+const SNAPSHOT_SERVE_MS = 60 * 1000; // serve cached snapshot for up to 60s
+
 // Serve React build in production, fallback to old public/ for dev
 const clientDist = path.join(__dirname, '..', 'client', 'dist');
 const publicDir = path.join(__dirname, '..', 'public');
@@ -68,16 +73,39 @@ app.delete('/api/tokens/:symbol', authMiddleware, adminMiddleware, (req, res) =>
  */
 app.get('/api/rsi/:symbol', async (req, res) => {
   const { symbol } = req.params;
+  const symUpper = symbol.toUpperCase();
+
+  // Serve from lastSnapshot if fresh
+  if (lastSnapshot && Date.now() - lastSnapshotTime < SNAPSHOT_SERVE_MS) {
+    const tokenData = lastSnapshot.find(t => t.symbol === symUpper && !t.error);
+    if (tokenData) {
+      const rsiData = tokenData.timeframes || {};
+      const primaryDivergence = tokenData.divergence;
+      const overallRecommendation = getRecommendation(tokenData.primaryRSI || 50, primaryDivergence);
+      let overallAction = 'wait';
+      for (const [, data] of Object.entries(rsiData)) {
+        if (data.divergence?.bullish) overallAction = 'buy';
+        if (data.divergence?.bearish) overallAction = 'sell';
+      }
+      return res.json({
+        ...tokenData,
+        priceSource: 'cache',
+        overall: { action: overallAction, ...overallRecommendation },
+        period: 14,
+        updatedAt: new Date(lastSnapshotTime).toISOString(),
+      });
+    }
+  }
+
   const timeframes = (req.query.timeframes || '15m,1h,4h,1d').split(',');
   const period = parseInt(req.query.period) || 14;
 
   try {
     const candlesByTimeframe = {};
 
-    // Fetch candles for all timeframes in parallel
     const fetches = timeframes.map(async tf => {
       try {
-        const { candles } = await fetchCandles(symbol, tf);
+        const { candles } = await fetchCandles(symUpper, tf);
         return { tf, closes: candles.map(c => c.close) };
       } catch (e) {
         return { tf, closes: [], error: e.message };
@@ -91,44 +119,31 @@ app.get('/api/rsi/:symbol', async (req, res) => {
       }
     }
 
-    // Calculate RSI for all timeframes
     const rsiData = calculateMultiTimeframeRSI(candlesByTimeframe, period);
+    const { price, source: priceSource } = await fetchCurrentPrice(symUpper);
 
-    // Get current price
-    const { price, source: priceSource } = await fetchCurrentPrice(symbol);
-
-    // SMA 200 (1h candles)
+    // SMA 200 from the 1h candles already fetched (now returns 250 candles)
     let sma200 = null;
-    try {
-      const { candles: hourlyCandles } = await fetchCandles(symbol, '1h', 250);
-      const hourlyCloses = hourlyCandles.map(c => c.close);
-      sma200 = calculateSMA(hourlyCloses, 200);
-    } catch (e) { /* SMA unavailable */ }
+    if (candlesByTimeframe['1h'] && candlesByTimeframe['1h'].length >= 200) {
+      sma200 = calculateSMA(candlesByTimeframe['1h'], 200);
+    }
 
-    // Primary RSI: use shortest available timeframe for most current reading
     const primaryTF = rsiData['15m']?.rsi !== null ? '15m'
       : rsiData['1h']?.rsi !== null ? '1h'
       : rsiData['4h']?.rsi !== null ? '4h' : '1d';
     const primaryRSI = rsiData[primaryTF]?.rsi || null;
     const primaryDivergence = rsiData[primaryTF]?.divergence || null;
 
-    // Overall action: check divergence across all timeframes first
     let overallAction = 'wait';
-    let anyBullish = false;
-    let anyBearish = false;
-
     for (const [, data] of Object.entries(rsiData)) {
-      if (data.divergence?.bullish) anyBullish = true;
-      if (data.divergence?.bearish) anyBearish = true;
+      if (data.divergence?.bullish) overallAction = 'buy';
+      if (data.divergence?.bearish) overallAction = 'sell';
     }
-
-    if (anyBullish) overallAction = 'buy';
-    else if (anyBearish) overallAction = 'sell';
 
     const overallRecommendation = getRecommendation(primaryRSI || 50, primaryDivergence);
 
     res.json({
-      symbol: symbol.toUpperCase(),
+      symbol: symUpper,
       price,
       priceSource,
       sma200,
@@ -153,6 +168,16 @@ app.get('/api/rsi/:symbol', async (req, res) => {
  * GET /api/rsi - Get RSI for ALL tracked tokens
  */
 app.get('/api/rsi', async (req, res) => {
+  // Serve from lastSnapshot if fresh (avoids re-fetching all tokens)
+  if (lastSnapshot && Date.now() - lastSnapshotTime < SNAPSHOT_SERVE_MS) {
+    const enriched = lastSnapshot.map(t => {
+      if (t.error) return t;
+      const sparkline = (getPriceHistory(t.symbol, 1) || []).map(s => s.price);
+      return { ...t, sparkline, updatedAt: new Date(lastSnapshotTime).toISOString() };
+    });
+    return res.json(enriched);
+  }
+
   const tokens = loadTokens();
   const timeframes = (req.query.timeframes || '15m,1h,4h,1d').split(',');
   const period = parseInt(req.query.period) || 14;
@@ -181,15 +206,12 @@ app.get('/api/rsi', async (req, res) => {
         const { price } = await fetchCurrentPrice(token.symbol);
         const sparkline = (getPriceHistory(token.symbol, 1) || []).map(s => s.price);
 
-        // SMA 200 (1h candles)
+        // SMA 200 from the 1h candles already fetched (now returns 250 candles)
         let sma200 = null;
-        try {
-          const { candles: hourlyCandles } = await fetchCandles(token.symbol, '1h', 250);
-          const hourlyCloses = hourlyCandles.map(c => c.close);
-          sma200 = calculateSMA(hourlyCloses, 200);
-        } catch (e) { /* SMA unavailable */ }
+        if (candlesByTimeframe['1h'] && candlesByTimeframe['1h'].length >= 200) {
+          sma200 = calculateSMA(candlesByTimeframe['1h'], 200);
+        }
 
-        // Primary RSI: shortest timeframe for most current reading
         const primaryTF = rsiData['15m']?.rsi !== null ? '15m'
           : rsiData['1h']?.rsi !== null ? '1h'
           : rsiData['4h']?.rsi !== null ? '4h' : '1d';
@@ -744,12 +766,12 @@ async function _fetchEnrichedRSI(symbol) {
     rsiData.rsi4h = rsi['4h']?.rsi ?? null;
     rsiData.rsi1d = rsi['1d']?.rsi ?? null;
     rsiData.signalRSI = rsiData.rsi1d;
-  } catch (e) { /* RSI optional */ }
 
-  try {
-    const { candles } = await fetchCandles(symbol, '1h', 250);
-    rsiData.sma200 = calculateSMA(candles.map(c => c.close), 200);
-  } catch (e) { /* SMA optional */ }
+    // SMA 200 from the 1h candles already fetched (now returns 250 candles)
+    if (candlesByTimeframe['1h'] && candlesByTimeframe['1h'].length >= 200) {
+      rsiData.sma200 = calculateSMA(candlesByTimeframe['1h'], 200);
+    }
+  } catch (e) { /* RSI optional */ }
 
   return rsiData;
 }
@@ -872,17 +894,12 @@ async function collectSnapshot() {
           const primaryDivergence = rsiData[primaryTF]?.divergence || null;
           const recommendation = primaryRSI !== null ? getRecommendation(primaryRSI, primaryDivergence) : null;
 
-          // SMA 200 for auto-trader
+          // SMA 200 from the 1h candles already fetched (now returns 250 candles)
           let sma200 = null;
-          try {
-            const hourlyCloses = candlesByTimeframe['1h'] || [];
-            if (hourlyCloses.length >= 200) {
-              sma200 = calculateSMA(hourlyCloses, 200);
-            } else {
-              const { candles: hCandles } = await fetchCandles(token.symbol, '1h', 250);
-              sma200 = calculateSMA(hCandles.map(c => c.close), 200);
-            }
-          } catch (e) { /* SMA optional */ }
+          const hourlyCloses = candlesByTimeframe['1h'] || [];
+          if (hourlyCloses.length >= 200) {
+            sma200 = calculateSMA(hourlyCloses, 200);
+          }
 
           return {
             symbol: token.symbol,
@@ -907,6 +924,11 @@ async function collectSnapshot() {
 
     if (rsiDataArray.length > 0) {
       saveRSISnapshot(rsiDataArray);
+
+      // Store for HTTP endpoints to reuse
+      lastSnapshot = rsiDataArray;
+      lastSnapshotTime = Date.now();
+
       console.log(`  RSI snapshot saved: ${rsiDataArray.length} tokens`);
 
       // Log RSI availability per token/timeframe for diagnostics

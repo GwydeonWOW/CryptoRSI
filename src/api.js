@@ -31,6 +31,7 @@ const CANDLE_LIMIT = 100;
 
 const cache = new Map();
 const CACHE_TTL_MS = 60 * 1000; // 1 minute cache
+const inFlight = new Map();
 
 function getCached(key) {
   const entry = cache.get(key);
@@ -208,10 +209,36 @@ function calculateSMA(closes, period) {
 }
 
 async function fetchCandles(symbol, timeframe = '1d', limit = CANDLE_LIMIT) {
-  const cacheKey = `candles:${symbol}:${timeframe}:${limit}`;
-  const cached = getCached(cacheKey);
-  if (cached) return cached;
+  // For 1h, always fetch 250 candles to cover both RSI (needs ~15) and SMA200 (needs 200).
+  // Cache once under the full limit, return only the last `limit` candles to preserve
+  // identical RSI values (Wilder's smoothing is sensitive to input length).
+  const fetchLimit = timeframe === '1h' ? Math.max(limit, 250) : limit;
+  const cacheKey = `candles:${symbol}:${timeframe}:${fetchLimit}`;
 
+  const cached = getCached(cacheKey);
+  if (cached) {
+    return limit < fetchLimit
+      ? { ...cached, candles: cached.candles.slice(-limit) }
+      : cached;
+  }
+
+  // Deduplicate concurrent requests for the same data
+  if (inFlight.has(cacheKey)) return inFlight.get(cacheKey);
+
+  const promise = _fetchCandlesFromAPIs(symbol, timeframe, fetchLimit, cacheKey);
+  inFlight.set(cacheKey, promise);
+
+  try {
+    const result = await promise;
+    return limit < fetchLimit
+      ? { ...result, candles: result.candles.slice(-limit) }
+      : result;
+  } finally {
+    inFlight.delete(cacheKey);
+  }
+}
+
+async function _fetchCandlesFromAPIs(symbol, timeframe, limit, cacheKey) {
   const interval = BINANCE_INTERVALS[timeframe] || '1d';
   let result = null;
 
