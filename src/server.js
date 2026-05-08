@@ -754,7 +754,7 @@ async function _fetchEnrichedRSI(symbol) {
   return rsiData;
 }
 
-function runAutoTrader(rsiDataArray, settings) {
+async function runAutoTrader(rsiDataArray, settings) {
   const sim = settings.simulation || {};
   if (!sim.enabled) {
     console.log('  [SIM] Skipped: simulation disabled');
@@ -776,13 +776,29 @@ function runAutoTrader(rsiDataArray, settings) {
     if (token.error) continue;
 
     for (const [tf, config] of activeTFs) {
-      const rsi = token.timeframes?.[tf]?.rsi;
+      let rsi = token.timeframes?.[tf]?.rsi;
+      let rsiSource = 'batch';
+
       if (rsi === null || rsi === undefined) {
-        // Log if there's an open position but no RSI data (potential missed close)
-        if (hasOpenPosition(AUTO_TRADER_USER, token.symbol, tf)) {
-          console.log(`  [SIM] WARNING: ${token.symbol} (${tf}) has open position but RSI data is null — checking other TFs...`);
+        const hasPos = hasOpenPosition(AUTO_TRADER_USER, token.symbol, tf);
+        if (hasPos) {
+          console.log(`  [SIM] RETRY: ${token.symbol} (${tf}) has open position but batch RSI is null — fetching directly...`);
+          try {
+            const { candles } = await fetchCandles(token.symbol, tf);
+            const closes = candles.map(c => c.close);
+            const rsiValues = calculateRSI(closes);
+            rsi = rsiValues.length > 0 ? rsiValues[rsiValues.length - 1] : null;
+            if (rsi !== null) {
+              rsiSource = 'retry';
+              console.log(`  [SIM] RETRY OK: ${token.symbol} (${tf}) RSI=${rsi.toFixed(1)}`);
+            } else {
+              console.log(`  [SIM] RETRY FAILED: ${token.symbol} (${tf}) — could not calculate RSI from ${closes.length} candles`);
+            }
+          } catch (e) {
+            console.log(`  [SIM] RETRY ERROR: ${token.symbol} (${tf}) ${e.message}`);
+          }
         }
-        continue;
+        if (rsi === null || rsi === undefined) continue;
       }
 
       const rsiData = {
@@ -812,7 +828,7 @@ function runAutoTrader(rsiDataArray, settings) {
           const result = closePosition(AUTO_TRADER_USER, token.symbol, token.price, rsiData, tf);
           if (result.success) {
             const pnlStr = result.trade.pnl >= 0 ? `+$${result.trade.pnl.toFixed(2)}` : `-$${Math.abs(result.trade.pnl).toFixed(2)}`;
-            console.log(`  [SIM] SELL ${token.symbol} @ $${token.price?.toFixed(2)} | RSI ${rsi.toFixed(1)} (${tf}) | ${pnlStr} (${result.trade.pnlPct.toFixed(1)}%)`);
+            console.log(`  [SIM] SELL ${token.symbol} @ $${token.price?.toFixed(2)} | RSI ${rsi.toFixed(1)} (${tf}) | ${pnlStr} (${result.trade.pnlPct.toFixed(1)}%)${rsiSource === 'retry' ? ' [RETRY]' : ''}`);
           }
         } else {
           console.log(`  [SIM] SKIP SELL ${token.symbol} (${tf}) | RSI ${rsi.toFixed(1)} >= ${config.rsiOverbought || 70} but no position`);
@@ -917,7 +933,7 @@ async function collectSnapshot() {
       checkAndNotifyDiscord(rsiDataArray, settings);
 
       // Auto-trader: buy on oversold, sell on overbought
-      runAutoTrader(rsiDataArray, settings);
+      await runAutoTrader(rsiDataArray, settings);
 
       // Save price snapshot
       const prices = rsiDataArray.map(t => ({ symbol: t.symbol, price: t.price }));

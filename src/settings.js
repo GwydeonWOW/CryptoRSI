@@ -44,9 +44,10 @@ const DEFAULT_SETTINGS = {
 };
 
 function _mergeSimTimeframes(userTf) {
+  const defaults = DEFAULT_SETTINGS.simulation.timeframes;
   const result = {};
   for (const tf of ['15m', '1h', '4h', '1d']) {
-    result[tf] = { ...DEFAULT_SIM_TF, ...((userTf || {})[tf] || {}) };
+    result[tf] = { ...defaults[tf], ...((userTf || {})[tf] || {}) };
   }
   return result;
 }
