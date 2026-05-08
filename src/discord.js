@@ -12,6 +12,13 @@ const COLORS = {
   yellow: 0xeab308,
 };
 
+function fmtPrice(v) {
+  if (v == null) return '?';
+  if (v >= 1) return '$' + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  if (v >= 0.01) return '$' + v.toFixed(4);
+  return '$' + v.toFixed(8);
+}
+
 const RSI_EMOJI = {
   oversold: '🟢',
   overbought: '🔴',
@@ -67,13 +74,13 @@ function pad(v) {
 }
 
 function buildBaseEmbed(token, alertRSI, alertTf) {
-  const priceStr = token.price?.toLocaleString('en-US', { maximumFractionDigits: 2 }) || '?';
+  const priceStr = fmtPrice(token.price);
   return {
     title: `${token.name || token.symbol} (${token.symbol})`,
     url: `https://www.binance.com/en/trade/${token.symbol}_USDT`,
     fields: [
       { name: 'RSI', value: `**${alertRSI.toFixed(1)}** (${alertTf})`, inline: true },
-      { name: 'Precio', value: `$${priceStr}`, inline: true },
+      { name: 'Precio', value: priceStr, inline: true },
     ],
     footer: { text: 'CryptoRSI', icon_url: 'https://cdn.discordapp.com/embed/avatars/0.png' },
     timestamp: new Date().toISOString(),
@@ -113,7 +120,7 @@ async function checkAndNotifyDiscord(rsiDataArray, settings) {
     const sma200 = token.sma200;
     const sma200Field = sma200 ? {
       name: 'SMA 200',
-      value: `**$${sma200.toLocaleString('en-US', { maximumFractionDigits: 0 })}** ${token.price >= sma200 ? '📈 Encima' : '📉 Debajo'}`,
+      value: `**${fmtPrice(sma200)}** ${token.price >= sma200 ? '📈 Encima' : '📉 Debajo'}`,
       inline: true,
     } : null;
 

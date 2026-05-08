@@ -8,6 +8,13 @@ const cooldownStore = require('./cooldownStore');
 
 const TELEGRAM_API_BASE = 'https://api.telegram.org/bot';
 
+function fmtPrice(v) {
+  if (v == null) return '?';
+  if (v >= 1) return '$' + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  if (v >= 0.01) return '$' + v.toFixed(4);
+  return '$' + v.toFixed(8);
+}
+
 let lastUpdateId = 0;
 let pollingActive = false;
 
@@ -191,10 +198,9 @@ async function checkAndNotify(rsiDataArray, settings) {
     const rsi4h = token.timeframes?.['4h']?.rsi;
     const rsi1h = token.timeframes?.['1h']?.rsi;
     const rsi15m = token.timeframes?.['15m']?.rsi;
-    const priceStr = price?.toLocaleString('en-US', { maximumFractionDigits: 2 }) || '?';
+    const priceStr = fmtPrice(price);
     const sma200 = token.sma200;
-    const sma200Str = sma200 ? `$${sma200.toLocaleString('en-US', { maximumFractionDigits: 0 })}` : null;
-    const sma200Label = sma200 ? `${price >= sma200 ? '📈' : '📉'} SMA 200: <b>${sma200Str}</b> (${price >= sma200 ? 'encima' : 'debajo'})\n` : '';
+    const sma200Label = sma200 ? `${price >= sma200 ? '📈' : '📉'} SMA 200: <b>${fmtPrice(sma200)}</b> (${price >= sma200 ? 'encima' : 'debajo'})\n` : '';
 
     const alertConfig = { ...alertGeneric, ...(tokenAlerts[symbol] || {}) };
     const alertTf = alertConfig.alertTimeframe || '1d';
