@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuthAPI, getAuthHeaders } from '../hooks/useAPI';
 import Loading from '../components/Loading';
+import { formatPrice } from '../dashboard/TokenCard';
 
 export default function TradeHistory({ refreshTrigger, user }) {
   const [data, setData] = useState(null);
@@ -115,8 +116,8 @@ export default function TradeHistory({ refreshTrigger, user }) {
                     <td style={tdStyle}><strong>{pos.symbol}</strong></td>
                     <td style={tdStyle}><TfBadge tf={pos.timeframe} /></td>
                     <td style={tdStyle}>{formatDate(pos.openedAt)}</td>
-                    <td style={tdStyle}>${pos.entryPrice?.toFixed(2)}</td>
-                    <td style={tdStyle}>{pos.currentPrice ? `$${pos.currentPrice.toFixed(2)}` : '-'}</td>
+                    <td style={tdStyle}>{formatPrice(pos.entryPrice)}</td>
+                    <td style={tdStyle}>{pos.currentPrice ? formatPrice(pos.currentPrice) : '-'}</td>
                     <td style={tdStyle}>${pos.amount?.toFixed(2)}</td>
                     <td style={tdStyle}>{formatRSISummary(pos.rsi)}</td>
                     <td style={tdStyle}>{pos.rsi?.sma200?.toFixed(0) || '-'}</td>
@@ -196,8 +197,8 @@ export default function TradeHistory({ refreshTrigger, user }) {
                     <td style={tdStyle}>{formatDate(t.openedAt)}</td>
                     <td style={tdStyle}>{formatDate(t.closedAt)}</td>
                     <td style={tdStyle}>{formatDuration(t.openedAt, t.closedAt)}</td>
-                    <td style={tdStyle}>${t.entryPrice?.toFixed(2)}</td>
-                    <td style={tdStyle}>${t.exitPrice?.toFixed(2)}</td>
+                    <td style={tdStyle}>{formatPrice(t.entryPrice)}</td>
+                    <td style={tdStyle}>{formatPrice(t.exitPrice)}</td>
                     <td style={tdStyle}>${t.amount?.toFixed(2)}</td>
                     <td style={tdStyle}>{formatRSISummary(t.rsi)}</td>
                     <td style={tdStyle}>{formatRSISummary(t.rsiClose)}</td>
@@ -231,10 +232,10 @@ function TfBadge({ tf }) {
 function formatRSISummary(rsi) {
   if (!rsi) return '-';
   const parts = [];
-  if (rsi.rsi15m != null) parts.push(`15m:${rsi.rsi15m.toFixed(0)}`);
-  if (rsi.rsi1h != null) parts.push(`1h:${rsi.rsi1h.toFixed(0)}`);
-  if (rsi.rsi4h != null) parts.push(`4h:${rsi.rsi4h.toFixed(0)}`);
-  if (rsi.rsi1d != null) parts.push(`1d:${rsi.rsi1d.toFixed(0)}`);
+  if (rsi.rsi15m != null) parts.push(`15m:${rsi.rsi15m.toFixed(1)}`);
+  if (rsi.rsi1h != null) parts.push(`1h:${rsi.rsi1h.toFixed(1)}`);
+  if (rsi.rsi4h != null) parts.push(`4h:${rsi.rsi4h.toFixed(1)}`);
+  if (rsi.rsi1d != null) parts.push(`1d:${rsi.rsi1d.toFixed(1)}`);
   if (parts.length === 0) {
     const sig = rsi.signalRSI ?? rsi;
     return typeof sig === 'number' ? sig.toFixed(1) : '-';
@@ -282,8 +283,8 @@ const EXPORT_COLUMNS = [
   { key: 'openedAt', label: 'Fecha Apertura', fmt: v => v ? new Date(v).toLocaleString('es-ES') : '' },
   { key: 'closedAt', label: 'Fecha Cierre', fmt: v => v ? new Date(v).toLocaleString('es-ES') : '' },
   { key: 'duration', label: 'Duracion', fmt: (_, t) => formatDuration(t.openedAt, t.closedAt) },
-  { key: 'entryPrice', label: 'Precio Compra', fmt: v => v?.toFixed(2) || '' },
-  { key: 'exitPrice', label: 'Precio Venta', fmt: v => v?.toFixed(2) || '' },
+  { key: 'entryPrice', label: 'Precio Compra', fmt: v => v != null ? formatPrice(v).replace('$', '') : '' },
+  { key: 'exitPrice', label: 'Precio Venta', fmt: v => v != null ? formatPrice(v).replace('$', '') : '' },
   { key: 'amount', label: 'Inversion ($)', fmt: v => v?.toFixed(2) || '' },
   { key: 'exitValue', label: 'Valor Salida ($)', fmt: v => v?.toFixed(2) || '' },
   { key: 'quantity', label: 'Cantidad', fmt: v => v?.toFixed(6) || '' },
@@ -291,7 +292,7 @@ const EXPORT_COLUMNS = [
   { key: 'rsiOpen1h', label: 'RSI 1h (Compra)', fmt: (_, t) => t.rsi?.rsi1h?.toFixed(1) || '' },
   { key: 'rsiOpen4h', label: 'RSI 4h (Compra)', fmt: (_, t) => t.rsi?.rsi4h?.toFixed(1) || '' },
   { key: 'rsiOpen1d', label: 'RSI 1d (Compra)', fmt: (_, t) => t.rsi?.rsi1d?.toFixed(1) || '' },
-  { key: 'sma200', label: 'SMA 200 (Compra)', fmt: (_, t) => t.rsi?.sma200?.toFixed(0) || '' },
+  { key: 'sma200', label: 'SMA 200 (Compra)', fmt: (_, t) => t.rsi?.sma200?.toFixed(2) || '' },
   { key: 'signalRSIOpen', label: 'RSI Signal (Compra)', fmt: (_, t) => t.rsi?.signalRSI?.toFixed(1) || t.rsiAtOpen?.toFixed(1) || '' },
   { key: 'rsiClose15m', label: 'RSI 15m (Venta)', fmt: (_, t) => t.rsiClose?.rsi15m?.toFixed(1) || '' },
   { key: 'rsiClose1h', label: 'RSI 1h (Venta)', fmt: (_, t) => t.rsiClose?.rsi1h?.toFixed(1) || '' },
