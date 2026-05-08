@@ -25,8 +25,59 @@ function getTradesPath(userId) {
   return userPath;
 }
 
+function _migrateEntry(entry, defaultTf) {
+  if (!entry) return entry;
+  let changed = false;
+
+  if (!entry.timeframe) {
+    entry.timeframe = defaultTf;
+    changed = true;
+  }
+
+  if (!entry.rsi && entry.rsiAtOpen != null) {
+    entry.rsi = { rsi15m: null, rsi1h: null, rsi4h: null, rsi1d: null, sma200: null, signalRSI: entry.rsiAtOpen };
+    if (defaultTf === '1h') entry.rsi.rsi1h = entry.rsiAtOpen;
+    else if (defaultTf === '15m') entry.rsi.rsi15m = entry.rsiAtOpen;
+    else if (defaultTf === '4h') entry.rsi.rsi4h = entry.rsiAtOpen;
+    else entry.rsi.rsi1d = entry.rsiAtOpen;
+    changed = true;
+  }
+
+  return changed;
+}
+
 function loadTrades(userId) {
-  return readJSON(getTradesPath(userId), { positions: [], history: [] });
+  const trades = readJSON(getTradesPath(userId), { positions: [], history: [] });
+
+  // Migrate legacy entries to new format
+  const alertConfig = _getDefaultTf();
+  let dirty = false;
+  for (const pos of trades.positions || []) {
+    if (_migrateEntry(pos, alertConfig)) dirty = true;
+  }
+  for (const trade of trades.history || []) {
+    if (_migrateEntry(trade, alertConfig)) dirty = true;
+    if (!trade.rsiClose && trade.rsiAtClose != null) {
+      trade.rsiClose = { rsi15m: null, rsi1h: null, rsi4h: null, rsi1d: null, sma200: null, signalRSI: trade.rsiAtClose };
+      if (alertConfig === '1h') trade.rsiClose.rsi1h = trade.rsiAtClose;
+      else if (alertConfig === '15m') trade.rsiClose.rsi15m = trade.rsiAtClose;
+      else if (alertConfig === '4h') trade.rsiClose.rsi4h = trade.rsiAtClose;
+      else trade.rsiClose.rsi1d = trade.rsiAtClose;
+      dirty = true;
+    }
+  }
+  if (dirty) saveTrades(userId, trades);
+
+  return trades;
+}
+
+function _getDefaultTf() {
+  try {
+    const { loadSettings } = require('./settings');
+    return loadSettings().alerts?.generic?.alertTimeframe || '1d';
+  } catch (e) {
+    return '1d';
+  }
 }
 
 function saveTrades(userId, trades) {
