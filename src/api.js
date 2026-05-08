@@ -201,8 +201,14 @@ async function fetchCoinCapCandles(symbol, timeframe) {
 // Unified fetch with 3-API fallback + cache
 // ============================================================
 
-async function fetchCandles(symbol, timeframe = '1d') {
-  const cacheKey = `candles:${symbol}:${timeframe}`;
+function calculateSMA(closes, period) {
+  if (!closes || closes.length < period) return null;
+  const slice = closes.slice(-period);
+  return slice.reduce((sum, v) => sum + v, 0) / period;
+}
+
+async function fetchCandles(symbol, timeframe = '1d', limit = CANDLE_LIMIT) {
+  const cacheKey = `candles:${symbol}:${timeframe}:${limit}`;
   const cached = getCached(cacheKey);
   if (cached) return cached;
 
@@ -211,7 +217,7 @@ async function fetchCandles(symbol, timeframe = '1d') {
 
   // 1) Try Binance
   try {
-    const candles = await fetchBinanceCandles(symbol, interval);
+    const candles = await fetchBinanceCandles(symbol, interval, limit);
     if (candles && candles.length > 15) {
       result = { candles, source: 'binance' };
     }
@@ -312,4 +318,4 @@ async function fetchCurrentPrice(symbol) {
   return { price: null, source: null };
 }
 
-module.exports = { fetchCandles, fetchCurrentPrice };
+module.exports = { fetchCandles, fetchCurrentPrice, calculateSMA };

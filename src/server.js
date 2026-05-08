@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const { calculateRSI, getRecommendation, calculateMultiTimeframeRSI } = require('./rsi');
-const { fetchCandles, fetchCurrentPrice } = require('./api');
+const { fetchCandles, fetchCurrentPrice, calculateSMA } = require('./api');
 const { loadTokens, addToken, removeToken } = require('./config');
 const { openPosition, closePosition, getOpenPositions, hasOpenPosition, getHistory, getStats } = require('./trades');
 const { getMarketAnalysis } = require('./futures');
@@ -97,6 +97,14 @@ app.get('/api/rsi/:symbol', async (req, res) => {
     // Get current price
     const { price, source: priceSource } = await fetchCurrentPrice(symbol);
 
+    // SMA 200 (daily)
+    let sma200 = null;
+    try {
+      const { candles: dailyCandles } = await fetchCandles(symbol, '1d', 250);
+      const dailyCloses = dailyCandles.map(c => c.close);
+      sma200 = calculateSMA(dailyCloses, 200);
+    } catch (e) { /* SMA unavailable */ }
+
     // Primary RSI: use shortest available timeframe for most current reading
     const primaryTF = rsiData['15m']?.rsi !== null ? '15m'
       : rsiData['1h']?.rsi !== null ? '1h'
@@ -123,6 +131,7 @@ app.get('/api/rsi/:symbol', async (req, res) => {
       symbol: symbol.toUpperCase(),
       price,
       priceSource,
+      sma200,
       primaryRSI,
       primaryTimeframe: primaryTF,
       divergence: primaryDivergence,
@@ -172,6 +181,14 @@ app.get('/api/rsi', async (req, res) => {
         const { price } = await fetchCurrentPrice(token.symbol);
         const sparkline = (getPriceHistory(token.symbol, 1) || []).map(s => s.price);
 
+        // SMA 200 (daily)
+        let sma200 = null;
+        try {
+          const { candles: dailyCandles } = await fetchCandles(token.symbol, '1d', 250);
+          const dailyCloses = dailyCandles.map(c => c.close);
+          sma200 = calculateSMA(dailyCloses, 200);
+        } catch (e) { /* SMA unavailable */ }
+
         // Primary RSI: shortest timeframe for most current reading
         const primaryTF = rsiData['15m']?.rsi !== null ? '15m'
           : rsiData['1h']?.rsi !== null ? '1h'
@@ -185,6 +202,7 @@ app.get('/api/rsi', async (req, res) => {
           name: token.name,
           price,
           sparkline,
+          sma200,
           primaryRSI,
           primaryTimeframe: primaryTF,
           divergence: primaryDivergence,

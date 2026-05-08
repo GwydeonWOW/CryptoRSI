@@ -87,6 +87,23 @@ export default function TokenCard({ data, onRefresh, isAdmin }) {
         </div>
       </div>
 
+      {/* SMA 200 */}
+      {data.sma200 && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', padding: '0.4rem 0.6rem', background: 'var(--bg)', borderRadius: 6, fontSize: '0.75rem' }}>
+          <span style={{ color: 'var(--text-dim)' }}>SMA 200</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontWeight: 600 }}>{formatPrice(data.sma200)}</span>
+            <span style={{
+              fontSize: '0.65rem', fontWeight: 600, padding: '1px 6px', borderRadius: 3,
+              background: data.price >= data.sma200 ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)',
+              color: data.price >= data.sma200 ? 'var(--green)' : 'var(--red)',
+            }}>
+              {data.price >= data.sma200 ? 'ENCIMA' : 'DEBAJO'}
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* RSI Gauge + Timeframe tabs */}
       {activeTimeframes.length > 0 ? (
         <TokenTimeframes timeframes={activeTimeframes} primaryRSI={primaryRSI} primaryTF={primaryTF} rec={rec} />
