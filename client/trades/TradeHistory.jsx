@@ -5,6 +5,7 @@ import Loading from '../components/Loading';
 export default function TradeHistory({ refreshTrigger, user }) {
   const [data, setData] = useState(null);
   const [filter, setFilter] = useState('ALL');
+  const [tfFilter, setTfFilter] = useState('ALL');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -26,7 +27,7 @@ export default function TradeHistory({ refreshTrigger, user }) {
     try {
       const res = await fetch('/api/trade/auto-reset', { method: 'DELETE', headers: getAuthHeaders() });
       const data = await res.json();
-      if (data.success) { setFilter('ALL'); load(); }
+      if (data.success) { setFilter('ALL'); setTfFilter('ALL'); load(); }
       else alert(data.error || 'Error al resetear');
     } catch (e) { alert('Error: ' + e.message); }
   }
@@ -46,12 +47,24 @@ export default function TradeHistory({ refreshTrigger, user }) {
     ...Object.keys(perToken || {}),
     ...(positions || []).map(p => p.symbol),
   ])];
-  const filtered = filter === 'ALL' ? history : history.filter(t => t.symbol === filter);
-  const filteredPositions = filter === 'ALL' ? positions : positions.filter(p => p.symbol === filter);
+  const timeframes = [...new Set([
+    ...(positions || []).map(p => p.timeframe).filter(Boolean),
+    ...history.map(t => t.timeframe).filter(Boolean),
+  ])];
 
-  const filteredPnl = filtered.reduce((s, t) => s + t.pnl, 0);
-  const filteredTrades = filtered.length;
-  const filteredWins = filtered.filter(t => t.pnl > 0).length;
+  const applyFilters = (items) => {
+    let filtered = items;
+    if (filter !== 'ALL') filtered = filtered.filter(t => t.symbol === filter);
+    if (tfFilter !== 'ALL') filtered = filtered.filter(t => t.timeframe === tfFilter);
+    return filtered;
+  };
+
+  const filteredHistory = applyFilters(history);
+  const filteredPositions = applyFilters(positions);
+
+  const filteredPnl = filteredHistory.reduce((s, t) => s + t.pnl, 0);
+  const filteredTrades = filteredHistory.length;
+  const filteredWins = filteredHistory.filter(t => t.pnl > 0).length;
 
   return (
     <div>
@@ -85,12 +98,13 @@ export default function TradeHistory({ refreshTrigger, user }) {
               <thead>
                 <tr>
                   <th style={thStyle}>Token</th>
+                  <th style={thStyle}>TF</th>
                   <th style={thStyle}>Entrada</th>
                   <th style={thStyle}>Precio Compra</th>
                   <th style={thStyle}>Precio Actual</th>
                   <th style={thStyle}>Inversion</th>
-                  <th style={thStyle}>Cantidad</th>
-                  <th style={thStyle}>RSI Compra</th>
+                  <th style={thStyle}>RSI (Compra)</th>
+                  <th style={thStyle}>SMA 200</th>
                   <th style={thStyle}>P&L</th>
                   <th style={thStyle}>P&L %</th>
                 </tr>
@@ -99,12 +113,13 @@ export default function TradeHistory({ refreshTrigger, user }) {
                 {filteredPositions.map(pos => (
                   <tr key={pos.id}>
                     <td style={tdStyle}><strong>{pos.symbol}</strong></td>
+                    <td style={tdStyle}><TfBadge tf={pos.timeframe} /></td>
                     <td style={tdStyle}>{formatDate(pos.openedAt)}</td>
                     <td style={tdStyle}>${pos.entryPrice?.toFixed(2)}</td>
                     <td style={tdStyle}>{pos.currentPrice ? `$${pos.currentPrice.toFixed(2)}` : '-'}</td>
                     <td style={tdStyle}>${pos.amount?.toFixed(2)}</td>
-                    <td style={tdStyle}>{pos.quantity?.toFixed(6)}</td>
-                    <td style={tdStyle}>{pos.rsiAtOpen?.toFixed(1) || '-'}</td>
+                    <td style={tdStyle}>{formatRSISummary(pos.rsi)}</td>
+                    <td style={tdStyle}>{pos.rsi?.sma200?.toFixed(0) || '-'}</td>
                     <td style={{ ...tdStyle, color: pos.pnl >= 0 ? 'var(--green)' : 'var(--red)' }}>{formatPnl(pos.pnl)}</td>
                     <td style={{ ...tdStyle, color: pos.pnlPct >= 0 ? 'var(--green)' : 'var(--red)' }}>{pos.pnlPct?.toFixed(2)}%</td>
                   </tr>
@@ -125,10 +140,14 @@ export default function TradeHistory({ refreshTrigger, user }) {
               <option value="ALL">Todos</option>
               {symbols.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
+            <select value={tfFilter} onChange={e => setTfFilter(e.target.value)} style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem' }}>
+              <option value="ALL">Todos TF</option>
+              {timeframes.map(tf => <option key={tf} value={tf}>{tf}</option>)}
+            </select>
             <button className="btn btn-secondary btn-sm" onClick={load} disabled={loading}>Actualizar</button>
-            {filtered.length > 0 && <>
-              <button className="btn btn-secondary btn-sm" onClick={() => exportCSV(filtered)}>Exportar CSV</button>
-              <button className="btn btn-secondary btn-sm" onClick={() => exportExcel(filtered)}>Exportar Excel</button>
+            {filteredHistory.length > 0 && <>
+              <button className="btn btn-secondary btn-sm" onClick={() => exportCSV(filteredHistory)}>Exportar CSV</button>
+              <button className="btn btn-secondary btn-sm" onClick={() => exportExcel(filteredHistory)}>Exportar Excel</button>
             </>}
             {isSupremeAdmin && (
               <button className="btn btn-sm" onClick={resetSimulator} disabled={loading}
@@ -139,48 +158,50 @@ export default function TradeHistory({ refreshTrigger, user }) {
           </div>
         </div>
 
-        {filter !== 'ALL' && (
+        {(filter !== 'ALL' || tfFilter !== 'ALL') && (
           <div style={{ fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: '0.75rem' }}>
-            {filter}: {filteredTrades} ops | Win rate: {filteredTrades > 0 ? `${((filteredWins / filteredTrades) * 100).toFixed(0)}%` : '-'} | P&L: <span style={{ color: filteredPnl >= 0 ? 'var(--green)' : 'var(--red)' }}>{formatPnl(filteredPnl)}</span>
+            {filter !== 'ALL' && `${filter}: `}
+            {tfFilter !== 'ALL' && `TF ${tfFilter} | `}
+            {filteredTrades} ops | Win rate: {filteredTrades > 0 ? `${((filteredWins / filteredTrades) * 100).toFixed(0)}%` : '-'} | P&L: <span style={{ color: filteredPnl >= 0 ? 'var(--green)' : 'var(--red)' }}>{formatPnl(filteredPnl)}</span>
           </div>
         )}
 
-        {filtered.length === 0 ? (
-          <div className="history-empty">Sin operaciones cerradas{filter !== 'ALL' ? ` para ${filter}` : ''}.</div>
+        {filteredHistory.length === 0 ? (
+          <div className="history-empty">Sin operaciones cerradas{(filter !== 'ALL' || tfFilter !== 'ALL') ? ` para este filtro` : ''}.</div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
             <table style={tableStyle}>
               <thead>
                 <tr>
                   <th style={thStyle}>Token</th>
-                  <th style={thStyle}>Fecha Apertura</th>
-                  <th style={thStyle}>Fecha Cierre</th>
+                  <th style={thStyle}>TF</th>
+                  <th style={thStyle}>Apertura</th>
+                  <th style={thStyle}>Cierre</th>
                   <th style={thStyle}>Duracion</th>
-                  <th style={thStyle}>Precio Compra</th>
-                  <th style={thStyle}>Precio Venta</th>
+                  <th style={thStyle}>P. Compra</th>
+                  <th style={thStyle}>P. Venta</th>
                   <th style={thStyle}>Inversion</th>
-                  <th style={thStyle}>Valor Salida</th>
-                  <th style={thStyle}>Cantidad</th>
-                  <th style={thStyle}>RSI Compra</th>
-                  <th style={thStyle}>RSI Venta</th>
+                  <th style={thStyle}>RSI (Compra)</th>
+                  <th style={thStyle}>RSI (Venta)</th>
+                  <th style={thStyle}>SMA 200</th>
                   <th style={thStyle}>P&L ($)</th>
                   <th style={thStyle}>P&L (%)</th>
                 </tr>
               </thead>
               <tbody>
-                {[...filtered].reverse().map((t, i) => (
+                {[...filteredHistory].reverse().map((t, i) => (
                   <tr key={i}>
                     <td style={tdStyle}><strong>{t.symbol}</strong></td>
+                    <td style={tdStyle}><TfBadge tf={t.timeframe} /></td>
                     <td style={tdStyle}>{formatDate(t.openedAt)}</td>
                     <td style={tdStyle}>{formatDate(t.closedAt)}</td>
                     <td style={tdStyle}>{formatDuration(t.openedAt, t.closedAt)}</td>
                     <td style={tdStyle}>${t.entryPrice?.toFixed(2)}</td>
                     <td style={tdStyle}>${t.exitPrice?.toFixed(2)}</td>
                     <td style={tdStyle}>${t.amount?.toFixed(2)}</td>
-                    <td style={tdStyle}>${t.exitValue?.toFixed(2)}</td>
-                    <td style={tdStyle}>{t.quantity?.toFixed(6)}</td>
-                    <td style={tdStyle}>{t.rsiAtOpen?.toFixed(1) || '-'}</td>
-                    <td style={tdStyle}>{t.rsiAtClose?.toFixed(1) || '-'}</td>
+                    <td style={tdStyle}>{formatRSISummary(t.rsi)}</td>
+                    <td style={tdStyle}>{formatRSISummary(t.rsiClose)}</td>
+                    <td style={tdStyle}>{t.rsi?.sma200?.toFixed(0) || '-'}</td>
                     <td style={{ ...tdStyle, color: t.pnl >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 600 }}>{formatPnl(t.pnl)}</td>
                     <td style={{ ...tdStyle, color: t.pnlPct >= 0 ? 'var(--green)' : 'var(--red)' }}>{t.pnlPct?.toFixed(2)}%</td>
                   </tr>
@@ -192,6 +213,33 @@ export default function TradeHistory({ refreshTrigger, user }) {
       </div>
     </div>
   );
+}
+
+function TfBadge({ tf }) {
+  if (!tf) return <span style={{ color: 'var(--text-dim)' }}>-</span>;
+  const colors = { '15m': '#8b5cf6', '1h': '#3b82f6', '4h': '#f59e0b', '1d': '#10b981' };
+  return (
+    <span style={{
+      fontSize: '0.65rem', fontWeight: 700, padding: '2px 6px', borderRadius: 4,
+      background: `${colors[tf] || '#6b7280'}20`, color: colors[tf] || '#6b7280',
+    }}>
+      {tf}
+    </span>
+  );
+}
+
+function formatRSISummary(rsi) {
+  if (!rsi) return '-';
+  const parts = [];
+  if (rsi.rsi15m != null) parts.push(`15m:${rsi.rsi15m.toFixed(0)}`);
+  if (rsi.rsi1h != null) parts.push(`1h:${rsi.rsi1h.toFixed(0)}`);
+  if (rsi.rsi4h != null) parts.push(`4h:${rsi.rsi4h.toFixed(0)}`);
+  if (rsi.rsi1d != null) parts.push(`1d:${rsi.rsi1d.toFixed(0)}`);
+  if (parts.length === 0) {
+    const sig = rsi.signalRSI ?? rsi;
+    return typeof sig === 'number' ? sig.toFixed(1) : '-';
+  }
+  return parts.join(' ');
 }
 
 function StatCard({ label, value, color }) {
@@ -230,6 +278,7 @@ function TokenSummary({ symbol, stats, active, onClick }) {
 
 const EXPORT_COLUMNS = [
   { key: 'symbol', label: 'Token' },
+  { key: 'timeframe', label: 'Timeframe', fmt: (_, t) => t.timeframe || '-' },
   { key: 'openedAt', label: 'Fecha Apertura', fmt: v => v ? new Date(v).toLocaleString('es-ES') : '' },
   { key: 'closedAt', label: 'Fecha Cierre', fmt: v => v ? new Date(v).toLocaleString('es-ES') : '' },
   { key: 'duration', label: 'Duracion', fmt: (_, t) => formatDuration(t.openedAt, t.closedAt) },
@@ -238,8 +287,17 @@ const EXPORT_COLUMNS = [
   { key: 'amount', label: 'Inversion ($)', fmt: v => v?.toFixed(2) || '' },
   { key: 'exitValue', label: 'Valor Salida ($)', fmt: v => v?.toFixed(2) || '' },
   { key: 'quantity', label: 'Cantidad', fmt: v => v?.toFixed(6) || '' },
-  { key: 'rsiAtOpen', label: 'RSI Compra', fmt: v => v?.toFixed(1) || '' },
-  { key: 'rsiAtClose', label: 'RSI Venta', fmt: v => v?.toFixed(1) || '' },
+  { key: 'rsiOpen15m', label: 'RSI 15m (Compra)', fmt: (_, t) => t.rsi?.rsi15m?.toFixed(1) || t.rsiAtOpen?.toFixed(1) || '' },
+  { key: 'rsiOpen1h', label: 'RSI 1h (Compra)', fmt: (_, t) => t.rsi?.rsi1h?.toFixed(1) || '' },
+  { key: 'rsiOpen4h', label: 'RSI 4h (Compra)', fmt: (_, t) => t.rsi?.rsi4h?.toFixed(1) || '' },
+  { key: 'rsiOpen1d', label: 'RSI 1d (Compra)', fmt: (_, t) => t.rsi?.rsi1d?.toFixed(1) || '' },
+  { key: 'sma200', label: 'SMA 200 (Compra)', fmt: (_, t) => t.rsi?.sma200?.toFixed(0) || '' },
+  { key: 'signalRSIOpen', label: 'RSI Signal (Compra)', fmt: (_, t) => t.rsi?.signalRSI?.toFixed(1) || t.rsiAtOpen?.toFixed(1) || '' },
+  { key: 'rsiClose15m', label: 'RSI 15m (Venta)', fmt: (_, t) => t.rsiClose?.rsi15m?.toFixed(1) || '' },
+  { key: 'rsiClose1h', label: 'RSI 1h (Venta)', fmt: (_, t) => t.rsiClose?.rsi1h?.toFixed(1) || '' },
+  { key: 'rsiClose4h', label: 'RSI 4h (Venta)', fmt: (_, t) => t.rsiClose?.rsi4h?.toFixed(1) || '' },
+  { key: 'rsiClose1d', label: 'RSI 1d (Venta)', fmt: (_, t) => t.rsiClose?.rsi1d?.toFixed(1) || '' },
+  { key: 'signalRSIClose', label: 'RSI Signal (Venta)', fmt: (_, t) => t.rsiClose?.signalRSI?.toFixed(1) || t.rsiAtClose?.toFixed(1) || '' },
   { key: 'pnl', label: 'P&L ($)', fmt: v => v?.toFixed(2) || '' },
   { key: 'pnlPct', label: 'P&L (%)', fmt: v => v?.toFixed(2) || '' },
 ];

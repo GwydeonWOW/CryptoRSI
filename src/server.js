@@ -4,12 +4,12 @@ const path = require('path');
 const { calculateRSI, getRecommendation, calculateMultiTimeframeRSI } = require('./rsi');
 const { fetchCandles, fetchCurrentPrice, calculateSMA } = require('./api');
 const { loadTokens, addToken, removeToken } = require('./config');
-const { openPosition, closePosition, getOpenPositions, hasOpenPosition, getHistory, getStats } = require('./trades');
+const { openPosition, closePosition, getOpenPositions, getOpenPosition, hasOpenPosition, getHistory, getStats } = require('./trades');
 const { getMarketAnalysis } = require('./futures');
 const { checkAndNotify, startBotPolling } = require('./telegram');
 const { checkAndNotifyDiscord, sendDiscordMessage } = require('./discord');
 const { authMiddleware, adminMiddleware, generateToken, verifyPassword } = require('./auth');
-const { loadSettings, saveSettings, getAlertConfig, setTokenAlerts, removeTokenAlerts, getMaskedSettings } = require('./settings');
+const { loadSettings, saveSettings, getAlertConfig, setTokenAlerts, removeTokenAlerts, getMaskedSettings, getSimulationConfig, saveSimulationConfig } = require('./settings');
 const { ensureAdmin, listUsers, getUserByUsername, createUser, deleteUser, updateUser } = require('./users');
 const {
   saveRSISnapshot, getRSIHistory,
@@ -316,22 +316,16 @@ app.delete('/api/users/:id', authMiddleware, adminMiddleware, (req, res) => {
  * POST /api/trade/buy - Open a simulated position
  */
 app.post('/api/trade/buy', authMiddleware, async (req, res) => {
-  const { symbol, amount } = req.body;
+  const { symbol, amount, timeframe } = req.body;
   if (!symbol) return res.status(400).json({ error: 'Symbol is required' });
 
   try {
     const { price } = await fetchCurrentPrice(symbol);
     if (!price) return res.status(400).json({ error: 'No se pudo obtener el precio' });
 
-    let rsiAtOpen = null;
-    try {
-      const { candles } = await fetchCandles(symbol, '1d');
-      const closes = candles.map(c => c.close);
-      const rsiValues = calculateRSI(closes, 14);
-      rsiAtOpen = rsiValues.length > 0 ? rsiValues[rsiValues.length - 1] : null;
-    } catch (e) { /* RSI optional */ }
+    const rsiData = await _fetchEnrichedRSI(symbol);
 
-    const result = openPosition(req.user.id, symbol, price, rsiAtOpen, parseFloat(amount) || 100);
+    const result = openPosition(req.user.id, symbol, price, rsiData, parseFloat(amount) || 100, timeframe || '1d');
     res.json(result);
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -342,22 +336,16 @@ app.post('/api/trade/buy', authMiddleware, async (req, res) => {
  * POST /api/trade/sell - Close a simulated position
  */
 app.post('/api/trade/sell', authMiddleware, async (req, res) => {
-  const { symbol } = req.body;
+  const { symbol, timeframe } = req.body;
   if (!symbol) return res.status(400).json({ error: 'Symbol is required' });
 
   try {
     const { price } = await fetchCurrentPrice(symbol);
     if (!price) return res.status(400).json({ error: 'No se pudo obtener el precio' });
 
-    let rsiAtClose = null;
-    try {
-      const { candles } = await fetchCandles(symbol, '1d');
-      const closes = candles.map(c => c.close);
-      const rsiValues = calculateRSI(closes, 14);
-      rsiAtClose = rsiValues.length > 0 ? rsiValues[rsiValues.length - 1] : null;
-    } catch (e) { /* RSI optional */ }
+    const rsiData = await _fetchEnrichedRSI(symbol);
 
-    const result = closePosition(req.user.id, symbol, price, rsiAtClose);
+    const result = closePosition(req.user.id, symbol, price, rsiData, timeframe || '1d');
     res.json(result);
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -438,8 +426,7 @@ app.get('/api/trade/auto-stats', authMiddleware, adminMiddleware, async (req, re
  */
 app.get('/api/trade/auto-debug', authMiddleware, adminMiddleware, async (req, res) => {
   const settings = loadSettings();
-  const alertGeneric = settings.alerts?.generic || {};
-  const alertTf = alertGeneric.alertTimeframe || '1d';
+  const sim = settings.simulation || {};
 
   const tokens = loadTokens();
   const timeframes = ['15m', '1h', '4h', '1d'];
@@ -466,20 +453,27 @@ app.get('/api/trade/auto-debug', authMiddleware, adminMiddleware, async (req, re
           allTfRSI[tf] = rsiData[tf]?.rsi ?? null;
         }
 
-        const alertRSI = rsiData[alertTf]?.rsi ?? null;
-        const hasPos = hasOpenPosition(AUTO_TRADER_USER, token.symbol);
+        const openPositions = {};
+        for (const tf of timeframes) {
+          openPositions[tf] = hasOpenPosition(AUTO_TRADER_USER, token.symbol, tf);
+        }
+
+        const simActions = {};
+        for (const [tf, config] of Object.entries(sim.timeframes || {})) {
+          if (!config.enabled) { simActions[tf] = 'disabled'; continue; }
+          const rsi = allTfRSI[tf];
+          if (rsi === null) { simActions[tf] = 'no_data'; continue; }
+          if (rsi <= (config.rsiOversold || 30) && !openPositions[tf]) simActions[tf] = 'BUY';
+          else if (rsi >= (config.rsiOverbought || 70) && openPositions[tf]) simActions[tf] = 'SELL';
+          else simActions[tf] = 'hold';
+        }
 
         return {
           symbol: token.symbol,
           price,
           rsiByTimeframe: allTfRSI,
-          alertTimeframe: alertTf,
-          alertRSI,
-          rsiOversold: alertGeneric.rsiOversold || 30,
-          rsiOverbought: alertGeneric.rsiOverbought || 70,
-          hasOpenPosition: hasPos,
-          wouldBuy: alertRSI !== null && alertRSI <= (alertGeneric.rsiOversold || 30) && !hasPos,
-          wouldSell: alertRSI !== null && alertRSI >= (alertGeneric.rsiOverbought || 70) && hasPos,
+          openPositions,
+          simActions,
         };
       } catch (e) {
         return { symbol: token.symbol, error: e.message };
@@ -488,12 +482,10 @@ app.get('/api/trade/auto-debug', authMiddleware, adminMiddleware, async (req, re
   );
 
   res.json({
-    configuredTimeframe: alertTf,
-    settings: {
-      rsiOversold: alertGeneric.rsiOversold || 30,
-      rsiOverbought: alertGeneric.rsiOverbought || 70,
-      cooldownMinutes: alertGeneric.cooldownMinutes || 240,
-      alertTimeframe: alertGeneric.alertTimeframe || '1d (default)',
+    simulation: {
+      enabled: sim.enabled,
+      amount: sim.amount,
+      timeframes: sim.timeframes,
     },
     tokens: diagnostics.map(r => r.status === 'fulfilled' ? r.value : { error: r.reason?.message }),
   });
@@ -644,6 +636,19 @@ app.delete('/api/settings/alerts/:symbol', authMiddleware, adminMiddleware, (req
 });
 
 // ============================================================
+// Simulation Config
+// ============================================================
+
+app.get('/api/settings/simulation', authMiddleware, adminMiddleware, (req, res) => {
+  res.json(getSimulationConfig());
+});
+
+app.put('/api/settings/simulation', authMiddleware, adminMiddleware, (req, res) => {
+  const updated = saveSimulationConfig(req.body);
+  res.json({ success: true, simulation: updated.simulation });
+});
+
+// ============================================================
 // SPA Fallback - serve index.html for all non-API routes
 // ============================================================
 
@@ -716,50 +721,96 @@ async function fetchAllRSI() {
 }
 
 const AUTO_TRADER_USER = 'admin_001';
-const AUTO_TRADE_AMOUNT = 1000;
+
+async function _fetchEnrichedRSI(symbol) {
+  const timeframes = ['15m', '1h', '4h', '1d'];
+  const rsiData = { rsi15m: null, rsi1h: null, rsi4h: null, rsi1d: null, sma200: null, signalRSI: null };
+
+  try {
+    const candlesByTimeframe = {};
+    const fetches = timeframes.map(async tf => {
+      try {
+        const { candles } = await fetchCandles(symbol, tf);
+        return { tf, closes: candles.map(c => c.close) };
+      } catch (e) { return { tf, closes: [] }; }
+    });
+    const results = await Promise.all(fetches);
+    for (const r of results) {
+      if (r.closes.length > 0) candlesByTimeframe[r.tf] = r.closes;
+    }
+    const rsi = calculateMultiTimeframeRSI(candlesByTimeframe, 14);
+    rsiData.rsi15m = rsi['15m']?.rsi ?? null;
+    rsiData.rsi1h = rsi['1h']?.rsi ?? null;
+    rsiData.rsi4h = rsi['4h']?.rsi ?? null;
+    rsiData.rsi1d = rsi['1d']?.rsi ?? null;
+    rsiData.signalRSI = rsiData.rsi1d;
+  } catch (e) { /* RSI optional */ }
+
+  try {
+    const { candles } = await fetchCandles(symbol, '1h', 250);
+    rsiData.sma200 = calculateSMA(candles.map(c => c.close), 200);
+  } catch (e) { /* SMA optional */ }
+
+  return rsiData;
+}
 
 function runAutoTrader(rsiDataArray, settings) {
-  const alertGeneric = settings.alerts?.generic || {};
-  const tokenAlerts = settings.alerts?.tokens || {};
-  const alertTf = alertGeneric.alertTimeframe || '1d';
+  const sim = settings.simulation || {};
+  if (!sim.enabled) {
+    console.log('  [SIM] Skipped: simulation disabled');
+    return;
+  }
 
-  console.log(`  [AUTO-TRADE] Checking ${rsiDataArray.length} tokens | TF: ${alertTf} | Oversold: <=${alertGeneric.rsiOversold || 30} | Overbought: >=${alertGeneric.rsiOverbought || 70}`);
+  const tfConfigs = sim.timeframes || {};
+  const amount = sim.amount || 1000;
+  const activeTFs = Object.entries(tfConfigs).filter(([, c]) => c.enabled);
+
+  if (activeTFs.length === 0) {
+    console.log('  [SIM] Skipped: no timeframes enabled');
+    return;
+  }
+
+  console.log(`  [SIM] Checking ${rsiDataArray.length} tokens | Amount: $${amount} | TFs: ${activeTFs.map(([tf]) => tf).join(',')}`);
 
   for (const token of rsiDataArray) {
     if (!token.primaryRSI || token.error) continue;
 
-    const alertConfig = { ...alertGeneric, ...(tokenAlerts[token.symbol] || {}) };
-    const tokenTf = alertConfig.alertTimeframe || '1d';
-    const alertRSI = token.timeframes?.[tokenTf]?.rsi || token.primaryRSI;
+    for (const [tf, config] of activeTFs) {
+      const rsi = token.timeframes?.[tf]?.rsi;
+      if (rsi === null || rsi === undefined) continue;
 
-    const tfSummary = ['15m', '1h', '4h', '1d']
-      .map(tf => `${tf}:${token.timeframes?.[tf]?.rsi?.toFixed(1) ?? '-'}`)
-      .join(' | ');
+      const rsiData = {
+        rsi15m: token.timeframes?.['15m']?.rsi ?? null,
+        rsi1h: token.timeframes?.['1h']?.rsi ?? null,
+        rsi4h: token.timeframes?.['4h']?.rsi ?? null,
+        rsi1d: token.timeframes?.['1d']?.rsi ?? null,
+        sma200: token.sma200 ?? null,
+        signalRSI: rsi,
+      };
 
-    // Buy signal: oversold + no open position
-    if (alertRSI <= (alertConfig.rsiOversold || 30)) {
-      if (!hasOpenPosition(AUTO_TRADER_USER, token.symbol)) {
-        const result = openPosition(AUTO_TRADER_USER, token.symbol, token.price, alertRSI, AUTO_TRADE_AMOUNT);
-        if (result.success) {
-          console.log(`  [AUTO-TRADE] BUY ${token.symbol} @ $${token.price?.toFixed(2)} | RSI ${alertRSI.toFixed(1)} (${tokenTf}) | $${AUTO_TRADE_AMOUNT}`);
+      // Buy: RSI <= oversold, no position for (symbol, timeframe)
+      if (rsi <= (config.rsiOversold || 30)) {
+        if (!hasOpenPosition(AUTO_TRADER_USER, token.symbol, tf)) {
+          const result = openPosition(AUTO_TRADER_USER, token.symbol, token.price, rsiData, amount, tf);
+          if (result.success) {
+            console.log(`  [SIM] BUY ${token.symbol} @ $${token.price?.toFixed(2)} | RSI ${rsi.toFixed(1)} (${tf}) | $${amount}`);
+          }
         } else {
-          console.log(`  [AUTO-TRADE] BUY FAILED ${token.symbol}: ${result.message}`);
+          console.log(`  [SIM] SKIP BUY ${token.symbol} (${tf}) | RSI ${rsi.toFixed(1)} <= ${config.rsiOversold || 30} but position open`);
         }
-      } else {
-        console.log(`  [AUTO-TRADE] SKIP BUY ${token.symbol} | RSI ${alertRSI.toFixed(1)} (${tokenTf}) <= ${alertConfig.rsiOversold || 30} but position already open`);
       }
-    }
 
-    // Sell signal: overbought + has open position
-    if (alertRSI >= (alertConfig.rsiOverbought || 70)) {
-      if (hasOpenPosition(AUTO_TRADER_USER, token.symbol)) {
-        const result = closePosition(AUTO_TRADER_USER, token.symbol, token.price, alertRSI);
-        if (result.success) {
-          const pnlStr = result.trade.pnl >= 0 ? `+$${result.trade.pnl.toFixed(2)}` : `-$${Math.abs(result.trade.pnl).toFixed(2)}`;
-          console.log(`  [AUTO-TRADE] SELL ${token.symbol} @ $${token.price?.toFixed(2)} | RSI ${alertRSI.toFixed(1)} (${tokenTf}) | ${pnlStr} (${result.trade.pnlPct.toFixed(1)}%)`);
+      // Sell: RSI >= overbought, has position for (symbol, timeframe)
+      if (rsi >= (config.rsiOverbought || 70)) {
+        if (hasOpenPosition(AUTO_TRADER_USER, token.symbol, tf)) {
+          const result = closePosition(AUTO_TRADER_USER, token.symbol, token.price, rsiData, tf);
+          if (result.success) {
+            const pnlStr = result.trade.pnl >= 0 ? `+$${result.trade.pnl.toFixed(2)}` : `-$${Math.abs(result.trade.pnl).toFixed(2)}`;
+            console.log(`  [SIM] SELL ${token.symbol} @ $${token.price?.toFixed(2)} | RSI ${rsi.toFixed(1)} (${tf}) | ${pnlStr} (${result.trade.pnlPct.toFixed(1)}%)`);
+          }
+        } else {
+          console.log(`  [SIM] SKIP SELL ${token.symbol} (${tf}) | RSI ${rsi.toFixed(1)} >= ${config.rsiOverbought || 70} but no position`);
         }
-      } else {
-        console.log(`  [AUTO-TRADE] SKIP SELL ${token.symbol} | RSI ${alertRSI.toFixed(1)} (${tokenTf}) >= ${alertConfig.rsiOverbought || 70} but no open position`);
       }
     }
   }
@@ -799,10 +850,23 @@ async function collectSnapshot() {
           const primaryDivergence = rsiData[primaryTF]?.divergence || null;
           const recommendation = primaryRSI !== null ? getRecommendation(primaryRSI, primaryDivergence) : null;
 
+          // SMA 200 for auto-trader
+          let sma200 = null;
+          try {
+            const hourlyCloses = candlesByTimeframe['1h'] || [];
+            if (hourlyCloses.length >= 200) {
+              sma200 = calculateSMA(hourlyCloses, 200);
+            } else {
+              const { candles: hCandles } = await fetchCandles(token.symbol, '1h', 250);
+              sma200 = calculateSMA(hCandles.map(c => c.close), 200);
+            }
+          } catch (e) { /* SMA optional */ }
+
           return {
             symbol: token.symbol,
             name: token.name,
             price,
+            sma200,
             primaryRSI,
             primaryTimeframe: primaryTF,
             divergence: primaryDivergence,

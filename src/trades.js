@@ -1,5 +1,6 @@
 /**
  * Trades Store - User-isolated JSON-based storage for simulated trades
+ * Supports multi-timeframe positions: each (symbol, timeframe) can have 1 open position.
  */
 
 const fs = require('fs');
@@ -8,10 +9,6 @@ const { getDataDir, ensureDataDir, readJSON, writeJSON } = require('./storage');
 
 const ADMIN_ID = 'admin_001';
 
-/**
- * Get trades file path for a specific user.
- * Migrates legacy trades.json -> trades_admin_001.json on first access.
- */
 function getTradesPath(userId) {
   ensureDataDir();
   const userPath = path.join(getDataDir(), `trades_${userId}.json`);
@@ -38,21 +35,36 @@ function saveTrades(userId, trades) {
 
 /**
  * Open a simulated position (buy)
+ * @param {string} userId
+ * @param {string} symbol
+ * @param {number} price
+ * @param {object} rsiData - { rsi15m, rsi1h, rsi4h, rsi1d, sma200, signalRSI }
+ * @param {number} amount
+ * @param {string} timeframe - '15m'|'1h'|'4h'|'1d' (default '1d' for backwards compat)
  */
-function openPosition(userId, symbol, price, rsiAtOpen, amount = 100) {
+function openPosition(userId, symbol, price, rsiData, amount = 100, timeframe = '1d') {
   const trades = loadTrades(userId);
   const upper = symbol.toUpperCase();
 
-  const existing = trades.positions.find(p => p.symbol === upper);
+  // 1 position per (symbol, timeframe)
+  const existing = trades.positions.find(p => p.symbol === upper && p.timeframe === timeframe);
   if (existing) {
-    return { success: false, message: `Ya tienes una posicion abierta en ${upper}` };
+    return { success: false, message: `Ya tienes una posicion abierta en ${upper} (${timeframe})` };
   }
+
+  const signalRSI = typeof rsiData === 'number' ? rsiData : (rsiData?.signalRSI ?? rsiData);
+
+  const rsi = typeof rsiData === 'object' && rsiData !== null
+    ? { rsi15m: rsiData.rsi15m ?? null, rsi1h: rsiData.rsi1h ?? null, rsi4h: rsiData.rsi4h ?? null, rsi1d: rsiData.rsi1d ?? null, sma200: rsiData.sma200 ?? null, signalRSI }
+    : { signalRSI };
 
   const position = {
     id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
     symbol: upper,
+    timeframe,
     entryPrice: price,
-    rsiAtOpen,
+    rsiAtOpen: signalRSI,
+    rsi,
     amount,
     quantity: amount / price,
     openedAt: new Date().toISOString(),
@@ -65,25 +77,45 @@ function openPosition(userId, symbol, price, rsiAtOpen, amount = 100) {
 
 /**
  * Close a simulated position (sell)
+ * @param {string} userId
+ * @param {string} symbol
+ * @param {number} currentPrice
+ * @param {object} rsiData - { rsi15m, rsi1h, rsi4h, rsi1d, sma200, signalRSI }
+ * @param {string} timeframe - must match the open position's timeframe
  */
-function closePosition(userId, symbol, currentPrice, rsiAtClose) {
+function closePosition(userId, symbol, currentPrice, rsiData, timeframe = '1d') {
   const trades = loadTrades(userId);
   const upper = symbol.toUpperCase();
 
-  const idx = trades.positions.findIndex(p => p.symbol === upper);
+  const idx = trades.positions.findIndex(p => p.symbol === upper && p.timeframe === timeframe);
   if (idx === -1) {
-    return { success: false, message: `No hay posicion abierta en ${upper}` };
+    // Fallback: try finding by symbol only (backwards compat)
+    const legacyIdx = trades.positions.findIndex(p => p.symbol === upper && !p.timeframe);
+    if (legacyIdx === -1) {
+      return { success: false, message: `No hay posicion abierta en ${upper} (${timeframe})` };
+    }
+    return _closeAtIdx(trades, legacyIdx, userId, currentPrice, rsiData);
   }
 
+  return _closeAtIdx(trades, idx, userId, currentPrice, rsiData);
+}
+
+function _closeAtIdx(trades, idx, userId, currentPrice, rsiData) {
   const position = trades.positions[idx];
   const exitValue = position.quantity * currentPrice;
   const pnl = exitValue - position.amount;
   const pnlPct = (pnl / position.amount) * 100;
 
+  const signalRSI = typeof rsiData === 'number' ? rsiData : (rsiData?.signalRSI ?? rsiData);
+  const rsiAtClose = typeof rsiData === 'object' && rsiData !== null
+    ? { rsi15m: rsiData.rsi15m ?? null, rsi1h: rsiData.rsi1h ?? null, rsi4h: rsiData.rsi4h ?? null, rsi1d: rsiData.rsi1d ?? null, sma200: rsiData.sma200 ?? null, signalRSI }
+    : { signalRSI };
+
   const closedTrade = {
     ...position,
     exitPrice: currentPrice,
-    rsiAtClose,
+    rsiAtClose: signalRSI,
+    rsiClose: rsiAtClose,
     exitValue,
     pnl,
     pnlPct,
@@ -101,8 +133,17 @@ function getOpenPositions(userId) {
   return loadTrades(userId).positions;
 }
 
-function hasOpenPosition(userId, symbol) {
+function getOpenPosition(userId, symbol, timeframe) {
   const trades = loadTrades(userId);
+  return trades.positions.find(p => p.symbol === symbol.toUpperCase() && p.timeframe === timeframe) || null;
+}
+
+function hasOpenPosition(userId, symbol, timeframe) {
+  const trades = loadTrades(userId);
+  if (timeframe) {
+    return trades.positions.some(p => p.symbol === symbol.toUpperCase() && p.timeframe === timeframe);
+  }
+  // Backwards compat: no timeframe = check any position for symbol
   return trades.positions.some(p => p.symbol === symbol.toUpperCase());
 }
 
@@ -138,4 +179,4 @@ function getStats(userId) {
   };
 }
 
-module.exports = { openPosition, closePosition, getOpenPositions, hasOpenPosition, getHistory, getStats };
+module.exports = { openPosition, closePosition, getOpenPositions, getOpenPosition, hasOpenPosition, getHistory, getStats };

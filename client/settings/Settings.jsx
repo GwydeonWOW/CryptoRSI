@@ -35,6 +35,7 @@ export default function Settings() {
 
       <GenericAlertsSection settings={settings} onUpdate={load} onMsg={setMsg} />
       <TokenAlertsSection settings={settings} onUpdate={load} onMsg={setMsg} />
+      <SimulationSection settings={settings} onUpdate={load} onMsg={setMsg} />
     </div>
   );
 }
@@ -411,6 +412,112 @@ function TokenAlertRow({ symbol, custom, generic, onUpdate, onMsg }) {
           <Row label="Div. Bajista"><Toggle checked={divBear} onChange={setDivBear} /></Row>
           <button className="btn btn-primary btn-sm" onClick={save} disabled={loading} style={{ marginTop: '0.5rem' }}>Guardar</button>
         </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// Simulation Config
+// ============================================================
+
+function SimulationSection({ settings, onUpdate, onMsg }) {
+  const sim = settings.simulation || {};
+  const [enabled, setEnabled] = useState(sim.enabled ?? true);
+  const [amount, setAmount] = useState(sim.amount || 1000);
+  const [tfConfigs, setTfConfigs] = useState(
+    sim.timeframes || {
+      '15m': { enabled: false, rsiOversold: 30, rsiOverbought: 70 },
+      '1h': { enabled: true, rsiOversold: 30, rsiOverbought: 70 },
+      '4h': { enabled: false, rsiOversold: 30, rsiOverbought: 70 },
+      '1d': { enabled: false, rsiOversold: 30, rsiOverbought: 70 },
+    }
+  );
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const s = settings.simulation || {};
+    setEnabled(s.enabled ?? true);
+    setAmount(s.amount || 1000);
+    setTfConfigs(s.timeframes || tfConfigs);
+  }, [settings]);
+
+  function updateTf(tf, field, value) {
+    setTfConfigs(prev => ({ ...prev, [tf]: { ...prev[tf], [field]: value } }));
+  }
+
+  async function save() {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/settings/simulation', {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ enabled, amount, timeframes: tfConfigs }),
+      });
+      const data = await res.json();
+      if (data.success) { onMsg({ type: 'ok', text: 'Simulacion guardada' }); onUpdate(); }
+      else onMsg({ type: 'error', text: data.error || 'Error' });
+    } catch (e) { onMsg({ type: 'error', text: e.message }); }
+    finally { setLoading(false); }
+  }
+
+  const activeCount = Object.values(tfConfigs).filter(c => c.enabled).length;
+
+  return (
+    <Section title={`Simulacion ${sim.enabled ? '✓' : ''}`}>
+      <p className="section-desc">Configura el simulador automatico de forma independiente a las alertas. Cada timeframe activo abre/cierra posiciones propias.</p>
+
+      <Row label="Simulacion activa"><Toggle checked={enabled} onChange={setEnabled} /></Row>
+      <Row label="Monto por operacion ($)">
+        <input type="number" value={amount} onChange={e => setAmount(Number(e.target.value))}
+          min={100} step={100} style={{ width: 120 }} />
+      </Row>
+
+      <div style={{ marginTop: '1rem' }}>
+        <div style={{ fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.5rem', color: 'var(--text-dim)' }}>
+          Timeframes activos: {activeCount}
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '0.75rem' }}>
+          {['15m', '1h', '4h', '1d'].map(tf => (
+            <TfSimCard key={tf} tf={tf} config={tfConfigs[tf]} onChange={(f, v) => updateTf(tf, f, v)} />
+          ))}
+        </div>
+      </div>
+
+      <button className="btn btn-primary btn-sm" onClick={save} disabled={loading} style={{ marginTop: '1rem' }}>
+        Guardar Configuracion de Simulacion
+      </button>
+    </Section>
+  );
+}
+
+function TfSimCard({ tf, config, onChange }) {
+  const labels = { '15m': '15 Minutos', '1h': '1 Hora', '4h': '4 Horas', '1d': '1 Dia' };
+  return (
+    <div style={{
+      background: config.enabled ? 'rgba(59,130,246,0.08)' : 'var(--bg)',
+      border: `1px solid ${config.enabled ? 'rgba(59,130,246,0.3)' : 'var(--surface2)'}`,
+      borderRadius: 8, padding: '0.75rem 1rem',
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: config.enabled ? '0.75rem' : 0 }}>
+        <div>
+          <strong style={{ fontSize: '0.85rem' }}>{labels[tf]}</strong>
+          <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)', marginLeft: 6 }}>({tf})</span>
+        </div>
+        <Toggle checked={config.enabled} onChange={v => onChange('enabled', v)} />
+      </div>
+      {config.enabled && (
+        <>
+          <Row label={`Compra RSI ≤ ${config.rsiOversold}`}>
+            <input type="range" min="10" max="45" step="1" value={config.rsiOversold}
+              onChange={e => onChange('rsiOversold', parseInt(e.target.value))} style={{ width: 100 }} />
+          </Row>
+          <Row label={`Venta RSI ≥ ${config.rsiOverbought}`}>
+            <input type="range" min="55" max="90" step="1" value={config.rsiOverbought}
+              onChange={e => onChange('rsiOverbought', parseInt(e.target.value))} style={{ width: 100 }} />
+          </Row>
+        </>
       )}
     </div>
   );
