@@ -773,11 +773,17 @@ function runAutoTrader(rsiDataArray, settings) {
   console.log(`  [SIM] Checking ${rsiDataArray.length} tokens | Amount: $${amount} | TFs: ${activeTFs.map(([tf]) => tf).join(',')}`);
 
   for (const token of rsiDataArray) {
-    if (!token.primaryRSI || token.error) continue;
+    if (token.error) continue;
 
     for (const [tf, config] of activeTFs) {
       const rsi = token.timeframes?.[tf]?.rsi;
-      if (rsi === null || rsi === undefined) continue;
+      if (rsi === null || rsi === undefined) {
+        // Log if there's an open position but no RSI data (potential missed close)
+        if (hasOpenPosition(AUTO_TRADER_USER, token.symbol, tf)) {
+          console.log(`  [SIM] WARNING: ${token.symbol} (${tf}) has open position but RSI data is null — checking other TFs...`);
+        }
+        continue;
+      }
 
       const rsiData = {
         rsi15m: token.timeframes?.['15m']?.rsi ?? null,
@@ -886,6 +892,15 @@ async function collectSnapshot() {
     if (rsiDataArray.length > 0) {
       saveRSISnapshot(rsiDataArray);
       console.log(`  RSI snapshot saved: ${rsiDataArray.length} tokens`);
+
+      // Log RSI availability per token/timeframe for diagnostics
+      const nullTFs = rsiDataArray
+        .map(t => {
+          const missing = ['15m', '1h', '4h', '1d'].filter(tf => t.timeframes?.[tf]?.rsi == null);
+          return missing.length > 0 ? `${t.symbol}(null: ${missing.join(',')})` : null;
+        })
+        .filter(Boolean);
+      if (nullTFs.length > 0) console.log(`  [RSI-DATA] Null timeframes: ${nullTFs.join(' | ')}`);
 
       // Check RSI signals and send Telegram notifications
       const divergences = rsiDataArray.filter(t => t.divergence?.bullish || t.divergence?.bearish);
