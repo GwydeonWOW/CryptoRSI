@@ -123,11 +123,12 @@ app.get('/api/rsi/:symbol', async (req, res) => {
     const rsiData = calculateMultiTimeframeRSI(candlesByTimeframe, period);
     const { price, source: priceSource } = await fetchCurrentPrice(symUpper);
 
-    // SMA 200 from the 1h candles already fetched (now returns 250 candles)
+    // SMA 200 — fetchCandles('1h', 250) hits the same cache as fetchCandles('1h') above
     let sma200 = null;
-    if (candlesByTimeframe['1h'] && candlesByTimeframe['1h'].length >= 200) {
-      sma200 = calculateSMA(candlesByTimeframe['1h'], 200);
-    }
+    try {
+      const { candles: hourlyCandles } = await fetchCandles(symUpper, '1h', 250);
+      sma200 = calculateSMA(hourlyCandles.map(c => c.close), 200);
+    } catch (e) { /* SMA unavailable */ }
 
     const primaryTF = rsiData['15m']?.rsi !== null ? '15m'
       : rsiData['1h']?.rsi !== null ? '1h'
@@ -207,11 +208,12 @@ app.get('/api/rsi', async (req, res) => {
         const { price } = await fetchCurrentPrice(token.symbol);
         const sparkline = (getPriceHistory(token.symbol, 1) || []).map(s => s.price);
 
-        // SMA 200 from the 1h candles already fetched (now returns 250 candles)
+        // SMA 200 — fetchCandles('1h', 250) hits the same cache as fetchCandles('1h') above
         let sma200 = null;
-        if (candlesByTimeframe['1h'] && candlesByTimeframe['1h'].length >= 200) {
-          sma200 = calculateSMA(candlesByTimeframe['1h'], 200);
-        }
+        try {
+          const { candles: hourlyCandles } = await fetchCandles(token.symbol, '1h', 250);
+          sma200 = calculateSMA(hourlyCandles.map(c => c.close), 200);
+        } catch (e) { /* SMA unavailable */ }
 
         const primaryTF = rsiData['15m']?.rsi !== null ? '15m'
           : rsiData['1h']?.rsi !== null ? '1h'
@@ -768,10 +770,11 @@ async function _fetchEnrichedRSI(symbol) {
     rsiData.rsi1d = rsi['1d']?.rsi ?? null;
     rsiData.signalRSI = rsiData.rsi1d;
 
-    // SMA 200 from the 1h candles already fetched (now returns 250 candles)
-    if (candlesByTimeframe['1h'] && candlesByTimeframe['1h'].length >= 200) {
-      rsiData.sma200 = calculateSMA(candlesByTimeframe['1h'], 200);
-    }
+    // SMA 200 — fetchCandles('1h', 250) hits the same cache as the 1h fetch above
+    try {
+      const { candles: hourlyCandles } = await fetchCandles(symbol, '1h', 250);
+      rsiData.sma200 = calculateSMA(hourlyCandles.map(c => c.close), 200);
+    } catch (e) { /* SMA optional */ }
   } catch (e) { /* RSI optional */ }
 
   return rsiData;
@@ -1010,12 +1013,12 @@ async function collectSnapshot() {
           const primaryDivergence = rsiData[primaryTF]?.divergence || null;
           const recommendation = primaryRSI !== null ? getRecommendation(primaryRSI, primaryDivergence) : null;
 
-          // SMA 200 from the 1h candles already fetched (now returns 250 candles)
+          // SMA 200 — fetchCandles('1h', 250) hits the same cache as the 1h fetch above
           let sma200 = null;
-          const hourlyCloses = candlesByTimeframe['1h'] || [];
-          if (hourlyCloses.length >= 200) {
-            sma200 = calculateSMA(hourlyCloses, 200);
-          }
+          try {
+            const { candles: hourlyCandles } = await fetchCandles(token.symbol, '1h', 250);
+            sma200 = calculateSMA(hourlyCandles.map(c => c.close), 200);
+          } catch (e) { /* SMA unavailable */ }
 
           return {
             symbol: token.symbol,
