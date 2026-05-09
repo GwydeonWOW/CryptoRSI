@@ -120,7 +120,7 @@ export default function TradeHistory({ refreshTrigger, user }) {
                     <td style={tdStyle}>{pos.currentPrice ? formatPrice(pos.currentPrice) : '-'}</td>
                     <td style={tdStyle}>${pos.amount?.toFixed(2)}</td>
                     <td style={tdStyle}>{formatRSISummary(pos.rsi)}</td>
-                    <td style={tdStyle}>{pos.rsi?.sma200?.toFixed(0) || '-'}</td>
+                    <td style={tdStyle}>{pos.rsi?.sma200 != null ? formatPrice(pos.rsi.sma200) : '-'}</td>
                     <td style={{ ...tdStyle, color: pos.pnl >= 0 ? 'var(--green)' : 'var(--red)' }}>{formatPnl(pos.pnl)}</td>
                     <td style={{ ...tdStyle, color: pos.pnlPct >= 0 ? 'var(--green)' : 'var(--red)' }}>{pos.pnlPct?.toFixed(2)}%</td>
                   </tr>
@@ -202,7 +202,7 @@ export default function TradeHistory({ refreshTrigger, user }) {
                     <td style={tdStyle}>${t.amount?.toFixed(2)}</td>
                     <td style={tdStyle}>{formatRSISummary(t.rsi)}</td>
                     <td style={tdStyle}>{formatRSISummary(t.rsiClose)}</td>
-                    <td style={tdStyle}>{t.rsi?.sma200?.toFixed(0) || '-'}</td>
+                    <td style={tdStyle}>{t.rsi?.sma200 != null ? formatPrice(t.rsi.sma200) : '-'}</td>
                     <td style={{ ...tdStyle, color: t.pnl >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 600 }}>{formatPnl(t.pnl)}</td>
                     <td style={{ ...tdStyle, color: t.pnlPct >= 0 ? 'var(--green)' : 'var(--red)' }}>{t.pnlPct?.toFixed(2)}%</td>
                   </tr>
@@ -292,7 +292,7 @@ const EXPORT_COLUMNS = [
   { key: 'rsiOpen1h', label: 'RSI 1h (Compra)', fmt: (_, t) => t.rsi?.rsi1h?.toFixed(1) || '' },
   { key: 'rsiOpen4h', label: 'RSI 4h (Compra)', fmt: (_, t) => t.rsi?.rsi4h?.toFixed(1) || '' },
   { key: 'rsiOpen1d', label: 'RSI 1d (Compra)', fmt: (_, t) => t.rsi?.rsi1d?.toFixed(1) || '' },
-  { key: 'sma200', label: 'SMA 200 (Compra)', fmt: (_, t) => t.rsi?.sma200?.toFixed(2) || '' },
+  { key: 'sma200', label: 'SMA 200 (Compra)', fmt: (_, t) => t.rsi?.sma200 != null ? formatPrice(t.rsi.sma200) : '' },
   { key: 'signalRSIOpen', label: 'RSI Signal (Compra)', fmt: (_, t) => t.rsi?.signalRSI?.toFixed(1) || t.rsiAtOpen?.toFixed(1) || '' },
   { key: 'rsiClose15m', label: 'RSI 15m (Venta)', fmt: (_, t) => t.rsiClose?.rsi15m?.toFixed(1) || '' },
   { key: 'rsiClose1h', label: 'RSI 1h (Venta)', fmt: (_, t) => t.rsiClose?.rsi1h?.toFixed(1) || '' },
