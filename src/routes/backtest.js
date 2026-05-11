@@ -133,7 +133,7 @@ async function fetchCoinCapHistorical(symbol, interval, startMs, endMs) {
 // Simulation Engine
 // ============================================================
 
-function simulateBacktest(candles, config, startMs, timeframe) {
+function simulateBacktest(candles, config, startMs) {
   const {
     amount = 1000,
     feePercent = 0,
@@ -142,10 +142,11 @@ function simulateBacktest(candles, config, startMs, timeframe) {
     rsiPeriod = 14,
   } = config;
 
-  // Match the live system's candle window exactly.
-  // Live system uses CANDLE_LIMIT=100 (250 for 1h) to compute RSI.
-  // We use a sliding window of the same size so backtest RSI = live RSI.
-  const CANDLE_WINDOW = timeframe === '1h' ? 250 : 100;
+  // Pre-calculate RSI from the full candle array (warm-up + range).
+  // This matches TradingView which uses all available history.
+  // Warm-up of 500 candles ensures Wilder's smoothing is fully converged.
+  const allCloses = candles.map(c => c.close);
+  const allRsi = calculateRSI(allCloses, rsiPeriod);
 
   const trades = [];
   let position = null;
@@ -153,13 +154,8 @@ function simulateBacktest(candles, config, startMs, timeframe) {
   const equityCurve = [];
 
   for (let i = rsiPeriod; i < candles.length; i++) {
-    // Sliding window: take the last CANDLE_WINDOW closes ending at candle i
-    const windowStart = Math.max(0, i - CANDLE_WINDOW + 1);
-    const windowCloses = candles.slice(windowStart, i + 1).map(c => c.close);
-    const windowRsi = calculateRSI(windowCloses, rsiPeriod);
-    if (windowRsi.length === 0) continue;
-
-    const rsi = windowRsi[windowRsi.length - 1];
+    const rsi = allRsi[i - rsiPeriod];
+    if (rsi === null || rsi === undefined) continue;
 
     const candle = candles[i];
     const price = candle.close;
@@ -169,17 +165,20 @@ function simulateBacktest(candles, config, startMs, timeframe) {
 
     // BUY signal (only within date range)
     if (rsi <= rsiOversold && !position && inRange) {
+      const feeBuy = amount * (feePercent / 100);
       const effectiveAmount = amount * feeMultiplier;
       const quantity = effectiveAmount / price;
       position = {
-        entryPrice: price, amount, quantity,
+        entryPrice: price, amount, quantity, feeBuy,
         rsiAtOpen: rsi, openedAt: timestamp, openIndex: i,
       };
     }
 
     // SELL signal (only within date range)
     if (rsi >= rsiOverbought && position && inRange) {
-      const exitValue = position.quantity * price * feeMultiplier;
+      const grossExit = position.quantity * price;
+      const feeSell = grossExit * (feePercent / 100);
+      const exitValue = grossExit * feeMultiplier;
       const pnl = exitValue - position.amount;
       const pnlPct = (pnl / position.amount) * 100;
 
@@ -187,6 +186,8 @@ function simulateBacktest(candles, config, startMs, timeframe) {
         entryPrice: position.entryPrice, exitPrice: price,
         amount: position.amount, quantity: position.quantity,
         exitValue, pnl, pnlPct,
+        feeBuy: position.feeBuy, feeSell,
+        totalFees: position.feeBuy + feeSell,
         rsiAtOpen: position.rsiAtOpen, rsiAtClose: rsi,
         openedAt: position.openedAt, closedAt: timestamp,
         duration: timestamp - position.openedAt,
@@ -206,8 +207,9 @@ function simulateBacktest(candles, config, startMs, timeframe) {
   if (position) {
     const lastPrice = candles[candles.length - 1].close;
     const lastTs = candles[candles.length - 1].timestamp;
-    const feeMultiplier = 1 - (feePercent / 100);
-    const exitValue = position.quantity * lastPrice * feeMultiplier;
+    const grossExit = position.quantity * lastPrice;
+    const feeSell = grossExit * (feePercent / 100);
+    const exitValue = grossExit * feeMultiplier;
     const pnl = exitValue - position.amount;
     const pnlPct = (pnl / position.amount) * 100;
 
@@ -215,6 +217,8 @@ function simulateBacktest(candles, config, startMs, timeframe) {
       entryPrice: position.entryPrice, exitPrice: lastPrice,
       amount: position.amount, quantity: position.quantity,
       exitValue, pnl, pnlPct,
+      feeBuy: position.feeBuy, feeSell,
+      totalFees: position.feeBuy + feeSell,
       rsiAtOpen: position.rsiAtOpen, rsiAtClose: null,
       openedAt: position.openedAt, closedAt: lastTs,
       duration: lastTs - position.openedAt, forcedClose: true,
@@ -225,6 +229,7 @@ function simulateBacktest(candles, config, startMs, timeframe) {
 
   const wins = trades.filter(t => t.pnl > 0).length;
   const totalPnl = trades.reduce((sum, t) => sum + t.pnl, 0);
+  const totalFees = trades.reduce((sum, t) => sum + t.totalFees, 0);
   const avgPnlPct = trades.length > 0 ? trades.reduce((sum, t) => sum + t.pnlPct, 0) / trades.length : 0;
   const bestTrade = trades.length > 0 ? trades.reduce((best, t) => t.pnl > best.pnl ? t : best) : null;
   const worstTrade = trades.length > 0 ? trades.reduce((worst, t) => t.pnl < worst.pnl ? t : worst) : null;
@@ -239,6 +244,7 @@ function simulateBacktest(candles, config, startMs, timeframe) {
       losses: trades.length - wins,
       winRate: trades.length > 0 ? (wins / trades.length) * 100 : 0,
       totalPnl,
+      totalFees,
       avgPnlPct,
       bestTrade: bestTrade ? { pnl: bestTrade.pnl, pnlPct: bestTrade.pnlPct } : null,
       worstTrade: worstTrade ? { pnl: worstTrade.pnl, pnlPct: worstTrade.pnlPct } : null,
@@ -287,11 +293,11 @@ router.post('/backtest/run', authMiddleware, adminMiddleware, async (req, res) =
 
     const interval = timeframe;
 
-    // Calculate warm-up period: fetch 250 candles before start date for RSI accuracy.
-    // Wilder's smoothing needs significant history to stabilize.
+    // Calculate warm-up period: fetch 500 candles before start date for RSI accuracy.
+    // Wilder's smoothing converges after ~250 steps; 500 gives comfortable margin.
     const tfMsMap = { '15m': 15 * 60 * 1000, '1h': 60 * 60 * 1000, '4h': 4 * 60 * 60 * 1000, '1d': 24 * 60 * 60 * 1000 };
     const tfMs = tfMsMap[interval] || 60 * 60 * 1000;
-    const warmupMs = 250 * tfMs;
+    const warmupMs = 500 * tfMs;
     const warmupStart = startMs - warmupMs;
 
     // Fetch candles from warm-up start to end date
@@ -301,7 +307,7 @@ router.post('/backtest/run', authMiddleware, adminMiddleware, async (req, res) =
       return res.status(400).json({ error: `Not enough candles (${candles.length}). Need at least 30.` });
     }
 
-    const result = simulateBacktest(candles, config, startMs, interval);
+    const result = simulateBacktest(candles, config, startMs);
 
     logger.info({ symbol, trades: result.stats.totalTrades, pnl: result.stats.totalPnl.toFixed(2) }, 'Backtest complete');
 

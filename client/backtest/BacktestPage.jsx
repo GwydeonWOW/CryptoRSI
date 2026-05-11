@@ -194,6 +194,7 @@ export default function BacktestPage() {
               color={result.stats.avgPnlPct >= 0 ? 'var(--green)' : 'var(--red)'} />
             <StatCard label="Mejor" value={result.stats.bestTrade ? formatPnl(result.stats.bestTrade.pnl) : '-'} color="var(--green)" />
             <StatCard label="Peor" value={result.stats.worstTrade ? formatPnl(result.stats.worstTrade.pnl) : '-'} color="var(--red)" />
+            <StatCard label="Fees Totales" value={`$${(result.stats.totalFees || 0).toFixed(2)}`} color="var(--text-dim)" />
             <StatCard label="Velas analizadas" value={result.stats.candlesAnalyzed} color="var(--text-dim)" />
           </div>
 
@@ -225,6 +226,7 @@ export default function BacktestPage() {
                   { key: 'pnlPct', label: 'P&L (%)', render: v => (
                     <span style={{ color: v >= 0 ? 'var(--green)' : 'var(--red)' }}>{v?.toFixed(2)}%</span>
                   )},
+                  { key: 'totalFees', label: 'Fees', render: v => v ? `$${v.toFixed(2)}` : '-' },
                 ]}
                 data={[...result.trades].reverse()}
                 emptyText="Sin operaciones"
@@ -331,7 +333,7 @@ function formatDuration(ms) {
 }
 
 function exportCSV(result, form) {
-  const headers = ['Apertura', 'Cierre', 'Duracion', 'P. Compra', 'P. Venta', 'Inversion', 'RSI Compra', 'RSI Venta', 'P&L ($)', 'P&L (%)'];
+  const headers = ['Apertura', 'Cierre', 'Duracion', 'P. Compra', 'P. Venta', 'Inversion', 'RSI Compra', 'RSI Venta', 'P&L ($)', 'P&L (%)', 'Fee Compra', 'Fee Venta', 'Fees Total'];
   const rows = result.trades.map(t => [
     formatTs(t.openedAt),
     formatTs(t.closedAt),
@@ -343,12 +345,15 @@ function exportCSV(result, form) {
     t.rsiAtClose?.toFixed(1) ?? '',
     t.pnl?.toFixed(2),
     t.pnlPct?.toFixed(2),
+    t.feeBuy?.toFixed(2) ?? '',
+    t.feeSell?.toFixed(2) ?? '',
+    t.totalFees?.toFixed(2) ?? '',
   ]);
 
   const summary = [
     '',
     `Backtest: ${form.symbol} | ${form.timeframe} | ${form.fromDate} - ${form.toDate}`,
-    `Operaciones: ${result.stats.totalTrades} | Win Rate: ${result.stats.winRate.toFixed(1)}% | P&L Total: ${result.stats.totalPnl.toFixed(2)}`,
+    `Operaciones: ${result.stats.totalTrades} | Win Rate: ${result.stats.winRate.toFixed(1)}% | P&L Total: ${result.stats.totalPnl.toFixed(2)} | Fees Total: ${(result.stats.totalFees || 0).toFixed(2)}`,
   ];
 
   const csv = [headers.join(','), ...rows.map(r => r.join(',')), ...summary].join('\n');
