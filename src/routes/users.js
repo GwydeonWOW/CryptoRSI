@@ -15,7 +15,7 @@ router.get('/users', authMiddleware, adminMiddleware, (req, res) => {
 
 router.post('/users', authMiddleware, adminMiddleware, validateCreateUser, handleValidationErrors, async (req, res) => {
   const { username, password, displayName, role } = req.body;
-  const result = await createUser(username, password, displayName, role);
+  const result = await createUser(username, password, displayName, role, req.user.role);
   if (result.error) return res.status(400).json(result);
   res.json(result);
 });
@@ -24,7 +24,7 @@ router.delete('/users/:id', authMiddleware, adminMiddleware, (req, res) => {
   if (req.params.id === req.user.id) {
     return res.status(400).json({ error: 'No puedes eliminar tu propio usuario' });
   }
-  const result = deleteUser(req.params.id);
+  const result = deleteUser(req.params.id, req.user.role);
   if (result.error) return res.status(400).json(result);
   res.json(result);
 });

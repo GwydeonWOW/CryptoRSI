@@ -208,7 +208,6 @@ export default function UserPanel({ user: currentUser }) {
                           background: rc.bg, color: rc.color,
                           border: `1px solid ${rc.color}40`, cursor: 'pointer',
                         }}>
-                        <option value="owner">Owner</option>
                         <option value="admin">Admin</option>
                         <option value="moderator">Moderador</option>
                         <option value="user">Usuario</option>
@@ -226,7 +225,7 @@ export default function UserPanel({ user: currentUser }) {
                     {new Date(u.createdAt).toLocaleDateString('es-ES')}
                   </td>
                   <td style={{ padding: '0.6rem 1rem', textAlign: 'right' }}>
-                    {u.id !== currentUser?.id && (
+                    {u.id !== currentUser?.id && (isOwner || (u.role !== 'owner' && u.role !== 'admin')) && (
                       <button className="btn btn-sm" style={{ color: 'var(--red)', background: 'rgba(239,68,68,0.1)' }}
                         onClick={() => handleDelete(u.id, u.username)}>
                         Eliminar

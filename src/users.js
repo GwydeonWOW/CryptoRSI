@@ -36,12 +36,17 @@ function getUserByUsername(username) {
   return db.prepare('SELECT * FROM users WHERE username = ?').get(username) || null;
 }
 
-async function createUser(username, password, displayName, role = 'user') {
+async function createUser(username, password, displayName, role = 'user', creatorRole = 'user') {
   if (!username || username.length < 2) {
     return { error: 'Username debe tener al menos 2 caracteres' };
   }
   if (!password || password.length < 4) {
     return { error: 'La contrasena debe tener al menos 4 caracteres' };
+  }
+
+  // Only owner can create owner/admin users
+  if (role === 'owner' && creatorRole !== 'owner') {
+    return { error: 'Solo el owner puede crear usuarios owner' };
   }
 
   const db = getDb();
@@ -61,12 +66,20 @@ async function createUser(username, password, displayName, role = 'user') {
   return { success: true, user: { id, username, displayName: displayName || username, role: safeRole } };
 }
 
-function deleteUser(id) {
+function deleteUser(id, requesterRole) {
   const db = getDb();
   if (id === ADMIN_ID) return { error: 'No se puede eliminar el usuario admin principal' };
 
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
   if (!user) return { error: 'Usuario no encontrado' };
+
+  // Only owner can delete other owners or admins
+  if (user.role === 'owner' && requesterRole !== 'owner') {
+    return { error: 'Solo el owner puede eliminar usuarios owner' };
+  }
+  if (user.role === 'admin' && requesterRole !== 'owner') {
+    return { error: 'Solo el owner puede eliminar usuarios admin' };
+  }
 
   db.transaction(() => {
     db.prepare('DELETE FROM positions WHERE user_id = ?').run(id);
