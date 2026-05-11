@@ -9,6 +9,7 @@ const { Router } = require('express');
 const { authMiddleware, adminMiddleware } = require('../auth');
 const fetch = require('node-fetch');
 const { calculateRSI } = require('../rsi');
+const { calculateSMA } = require('../api');
 const { loadSettings } = require('../settings');
 const { loadTokens } = require('../config');
 const logger = require('../logger');
@@ -130,10 +131,62 @@ async function fetchCoinCapHistorical(symbol, interval, startMs, endMs) {
 }
 
 // ============================================================
+// SMA200 Support
+// ============================================================
+
+async function fetchSMACandles(symbol, startMs, endMs) {
+  const results = {};
+  // 1h needs 250 candles warm-up, 4h needs 250 candles warm-up
+  const warmupMap = { '1h': 250 * 60 * 60 * 1000, '4h': 250 * 4 * 60 * 60 * 1000 };
+
+  for (const interval of ['1h', '4h']) {
+    try {
+      const warmup = warmupMap[interval];
+      const candles = await fetchHistoricalCandles(symbol, interval, startMs - warmup, endMs);
+      if (candles.length >= 200) {
+        results[interval] = candles;
+      }
+    } catch (e) {
+      logger.info({ symbol, interval, err: e.message }, 'SMA candle fetch failed (optional)');
+    }
+  }
+  return results;
+}
+
+function precomputeSMA200(smaCandles) {
+  const sma200 = {};
+  for (const [tf, candles] of Object.entries(smaCandles || {})) {
+    const closes = candles.map(c => c.close);
+    sma200[tf] = [];
+    for (let i = 199; i < candles.length; i++) {
+      const val = calculateSMA(closes.slice(0, i + 1), 200);
+      if (val !== null) {
+        sma200[tf].push({ timestamp: candles[i].timestamp, value: val });
+      }
+    }
+  }
+  return sma200;
+}
+
+function findNearestSMA(smaArray, targetTs) {
+  if (!smaArray || smaArray.length === 0) return null;
+  let lo = 0, hi = smaArray.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (smaArray[mid].timestamp < targetTs) lo = mid + 1;
+    else hi = mid;
+  }
+  if (lo > 0 && Math.abs(smaArray[lo - 1].timestamp - targetTs) < Math.abs(smaArray[lo].timestamp - targetTs)) {
+    return smaArray[lo - 1].value;
+  }
+  return smaArray[lo].value;
+}
+
+// ============================================================
 // Simulation Engine
 // ============================================================
 
-function simulateBacktest(candles, config, startMs) {
+function simulateBacktest(candles, config, startMs, sma200Data) {
   const {
     amount = 1000,
     feePercent = 0,
@@ -168,9 +221,12 @@ function simulateBacktest(candles, config, startMs) {
       const feeBuy = amount * (feePercent / 100);
       const effectiveAmount = amount * feeMultiplier;
       const quantity = effectiveAmount / price;
+      const sma200_1h = findNearestSMA(sma200Data?.['1h'], timestamp);
+      const sma200_4h = findNearestSMA(sma200Data?.['4h'], timestamp);
       position = {
         entryPrice: price, amount, quantity, feeBuy,
         rsiAtOpen: rsi, openedAt: timestamp, openIndex: i,
+        sma200_1h, sma200_4h,
       };
     }
 
@@ -188,6 +244,7 @@ function simulateBacktest(candles, config, startMs) {
         exitValue, pnl, pnlPct,
         feeBuy: position.feeBuy, feeSell,
         totalFees: position.feeBuy + feeSell,
+        sma200_1h: position.sma200_1h, sma200_4h: position.sma200_4h,
         rsiAtOpen: position.rsiAtOpen, rsiAtClose: rsi,
         openedAt: position.openedAt, closedAt: timestamp,
         duration: timestamp - position.openedAt,
@@ -219,6 +276,7 @@ function simulateBacktest(candles, config, startMs) {
       exitValue, pnl, pnlPct,
       feeBuy: position.feeBuy, feeSell,
       totalFees: position.feeBuy + feeSell,
+      sma200_1h: position.sma200_1h, sma200_4h: position.sma200_4h,
       rsiAtOpen: position.rsiAtOpen, rsiAtClose: null,
       openedAt: position.openedAt, closedAt: lastTs,
       duration: lastTs - position.openedAt, forcedClose: true,
@@ -310,7 +368,11 @@ router.post('/backtest/run', authMiddleware, adminMiddleware, async (req, res) =
       return res.status(400).json({ error: `Not enough candles (${candles.length}). Need at least 30.` });
     }
 
-    const result = simulateBacktest(candles, config, startMs);
+    // Fetch SMA200 candles (1h + 4h) independently — does not affect main pipeline
+    const smaCandles = await fetchSMACandles(symbol.toUpperCase(), startMs, endMs);
+    const sma200Data = precomputeSMA200(smaCandles);
+
+    const result = simulateBacktest(candles, config, startMs, sma200Data);
 
     logger.info({ symbol, trades: result.stats.totalTrades, pnl: result.stats.totalPnl.toFixed(2) }, 'Backtest complete');
 

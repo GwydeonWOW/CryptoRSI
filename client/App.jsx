@@ -11,6 +11,7 @@ import UserPanel from './auth/UserPanel';
 import ProfileModal from './auth/ProfileModal';
 import Login from './auth/Login';
 import { ToastProvider } from './hooks/useToast';
+import { TimezoneProvider } from './hooks/useTimezone';
 import { isAdmin as checkIsAdmin } from './hooks/useRoles';
 
 export default function App() {
@@ -74,6 +75,7 @@ export default function App() {
   const isAdmin = checkIsAdmin(user);
 
   return (
+    <TimezoneProvider>
     <ToastProvider>
       <Header onRefresh={refresh} refreshing={refreshing} lastUpdated={lastUpdated} user={user} onLogout={handleLogout} onProfile={() => setShowProfile(true)} />
       <div style={{ maxWidth: 1440, margin: '0 auto', padding: '1.5rem 2rem' }}>
@@ -108,5 +110,6 @@ export default function App() {
         <ProfileModal user={user} onClose={() => setShowProfile(false)} onUpdated={setUser} />
       )}
     </ToastProvider>
+    </TimezoneProvider>
   );
 }

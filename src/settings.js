@@ -7,6 +7,7 @@ const { getDb } = require('./db');
 const DEFAULT_SIM_TF = { enabled: false, rsiOversold: 30, rsiOverbought: 70 };
 
 const DEFAULT_SETTINGS = {
+  timezone: 'Europe/Madrid',
   telegram: {
     botToken: '',
     chatId: '',
@@ -55,6 +56,7 @@ function _mergeWithDefaults(settings) {
   return {
     ...DEFAULT_SETTINGS,
     ...settings,
+    timezone: settings.timezone || 'Europe/Madrid',
     telegram: { ...DEFAULT_SETTINGS.telegram, ...(settings.telegram || {}) },
     discord: { ...DEFAULT_SETTINGS.discord, ...(settings.discord || {}) },
     alerts: {
@@ -94,6 +96,7 @@ function saveSettings(updates) {
   const raw = _readRaw();
   const current = _mergeWithDefaults(raw);
   const merged = {
+    timezone: updates.timezone ?? current.timezone ?? 'Europe/Madrid',
     telegram: { ...current.telegram, ...(updates.telegram || {}) },
     discord: { ...current.discord, ...(updates.discord || {}) },
     alerts: {

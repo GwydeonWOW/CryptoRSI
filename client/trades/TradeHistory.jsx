@@ -4,9 +4,11 @@ import Loading from '../components/Loading';
 import { formatPrice } from '../dashboard/TokenCard';
 import { useToast } from '../hooks/useToast';
 import { isOwner } from '../hooks/useRoles';
+import { useTimezone } from '../hooks/useTimezone';
 import SortableTable from '../components/SortableTable';
 
 export default function TradeHistory({ refreshTrigger, user }) {
+  const { timezone } = useTimezone();
   const [data, setData] = useState(null);
   const { addToast } = useToast();
   const [filter, setFilter] = useState('ALL');
@@ -138,7 +140,7 @@ export default function TradeHistory({ refreshTrigger, user }) {
               columns={[
                 { key: 'symbol', label: 'Token', render: v => <strong>{v}</strong> },
                 { key: 'timeframe', label: 'TF', render: v => <TfBadge tf={v} /> },
-                { key: 'openedAt', label: 'Entrada', render: v => formatDate(v) },
+                { key: 'openedAt', label: 'Entrada', render: v => formatDate(v, timezone) },
                 { key: 'entryPrice', label: 'P. Compra', render: v => formatPrice(v) },
                 { key: 'currentPrice', label: 'P. Actual', render: v => v ? formatPrice(v) : '-' },
                 { key: 'amount', label: 'Inversion', render: v => `$${v?.toFixed(2)}` },
@@ -174,8 +176,8 @@ export default function TradeHistory({ refreshTrigger, user }) {
             </select>
             <button className="btn btn-secondary btn-sm" onClick={load} disabled={loading}>Actualizar</button>
             {history.length > 0 && <>
-              <button className="btn btn-secondary btn-sm" onClick={() => exportCSV(history)}>CSV</button>
-              <button className="btn btn-secondary btn-sm" onClick={() => exportExcel(history)}>Excel</button>
+              <button className="btn btn-secondary btn-sm" onClick={() => exportCSV(history, timezone)}>CSV</button>
+              <button className="btn btn-secondary btn-sm" onClick={() => exportExcel(history, timezone)}>Excel</button>
             </>}
             {isSupremeAdmin && (
               <button className="btn btn-sm" onClick={resetSimulator} disabled={loading}
@@ -218,8 +220,8 @@ export default function TradeHistory({ refreshTrigger, user }) {
               columns={[
                 { key: 'symbol', label: 'Token', render: v => <strong>{v}</strong> },
                 { key: 'timeframe', label: 'TF', render: v => <TfBadge tf={v} /> },
-                { key: 'openedAt', label: 'Apertura', render: v => formatDate(v) },
-                { key: 'closedAt', label: 'Cierre', render: v => formatDate(v) },
+                { key: 'openedAt', label: 'Apertura', render: v => formatDate(v, timezone) },
+                { key: 'closedAt', label: 'Cierre', render: v => formatDate(v, timezone) },
                 { key: 'duration', label: 'Duracion', render: (_, row) => formatDuration(row.openedAt, row.closedAt) },
                 { key: 'entryPrice', label: 'P. Compra', render: v => formatPrice(v) },
                 { key: 'exitPrice', label: 'P. Venta', render: v => formatPrice(v) },
@@ -316,11 +318,12 @@ function TokenSummary({ symbol, stats, active, onClick }) {
 
 // --- Export functions ---
 
-const EXPORT_COLUMNS = [
+function makeExportColumns(timezone) {
+  return [
   { key: 'symbol', label: 'Token' },
   { key: 'timeframe', label: 'Timeframe', fmt: (_, t) => t.timeframe || '-' },
-  { key: 'openedAt', label: 'Fecha Apertura', fmt: v => v ? new Date(v).toLocaleString('es-ES') : '' },
-  { key: 'closedAt', label: 'Fecha Cierre', fmt: v => v ? new Date(v).toLocaleString('es-ES') : '' },
+  { key: 'openedAt', label: 'Fecha Apertura', fmt: v => v ? new Date(v).toLocaleString('es-ES', { timeZone: timezone }) : '' },
+  { key: 'closedAt', label: 'Fecha Cierre', fmt: v => v ? new Date(v).toLocaleString('es-ES', { timeZone: timezone }) : '' },
   { key: 'duration', label: 'Duracion', fmt: (_, t) => formatDuration(t.openedAt, t.closedAt) },
   { key: 'entryPrice', label: 'Precio Compra', fmt: v => v != null ? formatPrice(v).replace('$', '') : '' },
   { key: 'exitPrice', label: 'Precio Venta', fmt: v => v != null ? formatPrice(v).replace('$', '') : '' },
@@ -340,25 +343,29 @@ const EXPORT_COLUMNS = [
   { key: 'signalRSIClose', label: 'RSI Signal (Venta)', fmt: (_, t) => t.rsiClose?.signalRSI?.toFixed(1) || t.rsiAtClose?.toFixed(1) || '' },
   { key: 'pnl', label: 'P&L ($)', fmt: v => v?.toFixed(2) || '' },
   { key: 'pnlPct', label: 'P&L (%)', fmt: v => v?.toFixed(2) || '' },
-];
+  ];
+}
 
-function buildRows(trades) {
-  return trades.map(t => EXPORT_COLUMNS.map(c => {
+function buildRows(trades, timezone) {
+  const cols = makeExportColumns(timezone);
+  return trades.map(t => cols.map(c => {
     const raw = c.key === 'duration' ? null : t[c.key];
     return c.fmt ? c.fmt(raw, t) : (raw ?? '');
   }));
 }
 
-function exportCSV(trades) {
-  const header = EXPORT_COLUMNS.map(c => c.label).join(';');
-  const rows = buildRows(trades).map(r => r.join(';')).join('\n');
+function exportCSV(trades, timezone) {
+  const cols = makeExportColumns(timezone);
+  const header = cols.map(c => c.label).join(';');
+  const rows = buildRows(trades, timezone).map(r => r.join(';')).join('\n');
   const csv = '﻿' + header + '\n' + rows;
   downloadFile(csv, 'simulador_operaciones.csv', 'text/csv;charset=utf-8');
 }
 
-function exportExcel(trades) {
-  const headerRow = EXPORT_COLUMNS.map(c => `<td style="font-weight:bold;background:#f0f0f0">${c.label}</td>`).join('');
-  const dataRows = buildRows(trades).map(r =>
+function exportExcel(trades, timezone) {
+  const cols = makeExportColumns(timezone);
+  const headerRow = cols.map(c => `<td style="font-weight:bold;background:#f0f0f0">${c.label}</td>`).join('');
+  const dataRows = buildRows(trades, timezone).map(r =>
     '<tr>' + r.map(v => `<td style="mso-number-format:\\@">${escapeHtml(String(v))}</td>`).join('') + '</tr>'
   ).join('');
 
@@ -390,10 +397,10 @@ function formatPnl(val) {
   return val >= 0 ? `+$${val.toFixed(2)}` : `-$${Math.abs(val).toFixed(2)}`;
 }
 
-function formatDate(iso) {
+function formatDate(iso, timezone) {
   if (!iso) return '-';
   const d = new Date(iso);
-  return d.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleDateString('es-ES', { timeZone: timezone, day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 function formatDuration(from, to) {

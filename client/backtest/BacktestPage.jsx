@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { getAuthHeaders, useAuthAPI } from '../hooks/useAPI';
 import { useToast } from '../hooks/useToast';
+import { useTimezone } from '../hooks/useTimezone';
 import Loading from '../components/Loading';
 import SortableTable from '../components/SortableTable';
 
@@ -21,6 +22,7 @@ const PRESETS = [
 
 export default function BacktestPage() {
   const { addToast } = useToast();
+  const { timezone } = useTimezone();
   const [tokens, setTokens] = useState([]);
   const [defaults, setDefaults] = useState(null);
   const [result, setResult] = useState(null);
@@ -184,7 +186,7 @@ export default function BacktestPage() {
           {/* Export buttons */}
           {result.trades.length > 0 && (
             <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
-              <button className="btn btn-sm" onClick={() => exportCSV(result, form)}
+              <button className="btn btn-sm" onClick={() => exportCSV(result, form, timezone)}
                 style={{ padding: '0.4rem 1rem', background: 'var(--surface2)', color: 'var(--text)', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: '0.8rem' }}>
                 Exportar CSV
               </button>
@@ -219,8 +221,8 @@ export default function BacktestPage() {
               <h4 style={{ margin: '0 0 0.75rem 0', color: 'var(--text)', fontSize: '0.9rem' }}>Operaciones ({result.trades.length})</h4>
               <SortableTable
                 columns={[
-                  { key: 'openedAt', label: 'Apertura', render: v => formatTs(v) },
-                  { key: 'closedAt', label: 'Cierre', render: v => formatTs(v) },
+                  { key: 'openedAt', label: 'Apertura', render: v => formatTs(v, timezone) },
+                  { key: 'closedAt', label: 'Cierre', render: v => formatTs(v, timezone) },
                   { key: 'duration', label: 'Duracion', render: v => formatDuration(v) },
                   { key: 'entryPrice', label: 'P. Compra', render: v => `$${v?.toFixed(2)}` },
                   { key: 'exitPrice', label: 'P. Venta', render: v => `$${v?.toFixed(2)}` },
@@ -234,6 +236,8 @@ export default function BacktestPage() {
                     <span style={{ color: v >= 0 ? 'var(--green)' : 'var(--red)' }}>{v?.toFixed(2)}%</span>
                   )},
                   { key: 'totalFees', label: 'Fees', render: v => v ? `$${v.toFixed(2)}` : '-' },
+                  { key: 'sma200_1h', label: 'SMA200 1h', render: v => v ? `$${v.toFixed(4)}` : '-' },
+                  { key: 'sma200_4h', label: 'SMA200 4h', render: v => v ? `$${v.toFixed(4)}` : '-' },
                 ]}
                 data={[...result.trades].reverse()}
                 emptyText="Sin operaciones"
@@ -325,9 +329,9 @@ function formatPnl(val) {
   return val >= 0 ? `+$${val.toFixed(2)}` : `-$${Math.abs(val).toFixed(2)}`;
 }
 
-function formatTs(ts) {
+function formatTs(ts, timezone) {
   if (!ts) return '-';
-  return new Date(ts).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
+  return new Date(ts).toLocaleDateString('es-ES', { timeZone: timezone, day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 
 function formatDuration(ms) {
@@ -339,11 +343,11 @@ function formatDuration(ms) {
   return `${Math.floor(ms / 60000)}m`;
 }
 
-function exportCSV(result, form) {
-  const headers = ['Apertura', 'Cierre', 'Duracion', 'P. Compra', 'P. Venta', 'Inversion', 'RSI Compra', 'RSI Venta', 'P&L ($)', 'P&L (%)', 'Fee Compra', 'Fee Venta', 'Fees Total'];
+function exportCSV(result, form, timezone) {
+  const headers = ['Apertura', 'Cierre', 'Duracion', 'P. Compra', 'P. Venta', 'Inversion', 'RSI Compra', 'RSI Venta', 'P&L ($)', 'P&L (%)', 'Fee Compra', 'Fee Venta', 'Fees Total', 'SMA200 1h', 'SMA200 4h'];
   const rows = result.trades.map(t => [
-    formatTs(t.openedAt),
-    formatTs(t.closedAt),
+    formatTs(t.openedAt, timezone),
+    formatTs(t.closedAt, timezone),
     formatDuration(t.duration),
     t.entryPrice?.toFixed(4),
     t.exitPrice?.toFixed(4),
@@ -355,6 +359,8 @@ function exportCSV(result, form) {
     t.feeBuy?.toFixed(2) ?? '',
     t.feeSell?.toFixed(2) ?? '',
     t.totalFees?.toFixed(2) ?? '',
+    t.sma200_1h?.toFixed(4) ?? '',
+    t.sma200_4h?.toFixed(4) ?? '',
   ]);
 
   const summary = [

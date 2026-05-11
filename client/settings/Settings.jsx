@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuthAPI, getAuthHeaders } from '../hooks/useAPI';
+import { useTimezone } from '../hooks/useTimezone';
 import Loading from '../components/Loading';
 
 export default function Settings() {
@@ -27,6 +28,8 @@ export default function Settings() {
   return (
     <div>
       {msg && <MsgBanner msg={msg} onDismiss={() => setMsg(null)} />}
+
+      <TimezoneSection settings={settings} onUpdate={load} onMsg={setMsg} />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
         <TelegramSection settings={settings} onUpdate={load} onMsg={setMsg} />
@@ -88,6 +91,69 @@ function Toggle({ checked, onChange }) {
         background: 'white', borderRadius: '50%', transition: '0.2s',
       }} />
     </label>
+  );
+}
+
+// ============================================================
+// Timezone
+// ============================================================
+
+const TIMEZONES = [
+  { value: 'Europe/Madrid', label: 'España (CET/CEST)' },
+  { value: 'UTC', label: 'UTC' },
+  { value: 'Europe/London', label: 'Reino Unido (GMT/BST)' },
+  { value: 'Europe/Berlin', label: 'Europa Central (CET/CEST)' },
+  { value: 'America/New_York', label: 'USA Este (EST/EDT)' },
+  { value: 'America/Chicago', label: 'USA Central (CST/CDT)' },
+  { value: 'America/Denver', label: 'USA Montaña (MST/MDT)' },
+  { value: 'America/Los_Angeles', label: 'USA Oeste (PST/PDT)' },
+  { value: 'Asia/Tokyo', label: 'Japon (JST)' },
+  { value: 'Asia/Shanghai', label: 'China (CST)' },
+  { value: 'Asia/Dubai', label: 'Dubai (GST)' },
+  { value: 'Australia/Sydney', label: 'Australia (AEST/AEDT)' },
+];
+
+function TimezoneSection({ settings, onUpdate, onMsg }) {
+  const { timezone, setTimezone } = useTimezone();
+  const [selected, setSelected] = useState(settings.timezone || timezone);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    setSelected(settings.timezone || timezone);
+  }, [settings.timezone, timezone]);
+
+  async function save() {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/settings', {
+        method: 'PUT', headers: getAuthHeaders(),
+        body: JSON.stringify({ timezone: selected }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setTimezone(selected);
+        onMsg({ type: 'ok', text: 'Zona horaria guardada' });
+        onUpdate();
+      } else onMsg({ type: 'error', text: data.error || 'Error' });
+    } catch (e) { onMsg({ type: 'error', text: e.message }); }
+    finally { setLoading(false); }
+  }
+
+  return (
+    <Section title="Zona Horaria">
+      <p className="section-desc">Afecta a todas las fechas y horas mostradas en la aplicacion.</p>
+      <Row label="Zona horaria">
+        <select value={selected} onChange={e => setSelected(e.target.value)} style={{ width: 220 }}>
+          {TIMEZONES.map(tz => <option key={tz.value} value={tz.value}>{tz.label}</option>)}
+        </select>
+      </Row>
+      <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', marginTop: 4 }}>
+        Hora actual: {new Date().toLocaleString('es-ES', { timeZone: selected, hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric' })}
+      </div>
+      <button className="btn btn-primary btn-sm" onClick={save} disabled={loading} style={{ marginTop: '0.5rem' }}>
+        Guardar Zona Horaria
+      </button>
+    </Section>
   );
 }
 
