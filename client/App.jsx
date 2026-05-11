@@ -6,6 +6,7 @@ import Dashboard from './dashboard/Dashboard';
 import MarketAnalysis from './market/MarketAnalysis';
 import Settings from './settings/Settings';
 import TradeHistory from './trades/TradeHistory';
+import BacktestPage from './backtest/BacktestPage';
 import UserPanel from './auth/UserPanel';
 import ProfileModal from './auth/ProfileModal';
 import Login from './auth/Login';
@@ -87,6 +88,11 @@ export default function App() {
         <div style={{ display: activeTab === 'trades' ? 'block' : 'none' }}>
           <TradeHistory refreshTrigger={triggers.trades} user={user} />
         </div>
+        {isAdmin && (
+          <div style={{ display: activeTab === 'backtest' ? 'block' : 'none' }}>
+            <BacktestPage />
+          </div>
+        )}
         {isAdmin && (
           <div style={{ display: activeTab === 'settings' ? 'block' : 'none' }}>
             <Settings />

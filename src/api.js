@@ -50,12 +50,14 @@ function setCache(key, data) {
 // Binance
 // ============================================================
 
-async function fetchBinanceCandles(symbol, interval, limit = CANDLE_LIMIT) {
+async function fetchBinanceCandles(symbol, interval, limit = CANDLE_LIMIT, opts = {}) {
   const binanceSymbol = symbol.toUpperCase().includes('USDT')
     ? symbol.toUpperCase()
     : `${symbol.toUpperCase()}USDT`;
 
-  const url = `${BINANCE_BASE}/api/v3/klines?symbol=${binanceSymbol}&interval=${interval}&limit=${limit}`;
+  let url = `${BINANCE_BASE}/api/v3/klines?symbol=${binanceSymbol}&interval=${interval}&limit=${limit}`;
+  if (opts.startTime) url += `&startTime=${opts.startTime}`;
+  if (opts.endTime) url += `&endTime=${opts.endTime}`;
 
   const response = await fetch(url, {
     headers: { 'User-Agent': 'CryptoRSI/1.0' }

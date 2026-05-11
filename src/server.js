@@ -27,6 +27,7 @@ const userRoutes = require('./routes/users');
 const marketRoutes = require('./routes/market');
 const historyRoutes = require('./routes/history');
 const adminRoutes = require('./routes/admin');
+const backtestRoutes = require('./routes/backtest');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -76,6 +77,7 @@ app.use('/api', userRoutes);
 app.use('/api', marketRoutes);
 app.use('/api', historyRoutes);
 app.use('/api', adminRoutes);
+app.use('/api', backtestRoutes);
 
 // ============================================================
 // SPA Fallback

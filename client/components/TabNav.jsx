@@ -7,6 +7,7 @@ export default function TabNav({ activeTab, onTabChange, isAdmin }) {
     { id: 'dashboard', label: 'Dashboard' },
     { id: 'market', label: 'Analisis de Mercado' },
     { id: 'trades', label: 'Simulador' },
+    ...(isAdmin ? [{ id: 'backtest', label: 'Backtest' }] : []),
     ...(isAdmin ? [{ id: 'settings', label: 'Configuracion' }] : []),
     ...(isAdmin ? [{ id: 'users', label: 'Usuarios' }] : []),
   ];
