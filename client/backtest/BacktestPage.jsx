@@ -224,8 +224,8 @@ export default function BacktestPage() {
                   { key: 'openedAt', label: 'Apertura', render: v => formatTs(v, timezone) },
                   { key: 'closedAt', label: 'Cierre', render: v => formatTs(v, timezone) },
                   { key: 'duration', label: 'Duracion', render: v => formatDuration(v) },
-                  { key: 'entryPrice', label: 'P. Compra', render: v => `$${v?.toFixed(2)}` },
-                  { key: 'exitPrice', label: 'P. Venta', render: v => `$${v?.toFixed(2)}` },
+                  { key: 'entryPrice', label: 'P. Compra', render: v => v != null ? `$${formatPrice(v)}` : '-' },
+                  { key: 'exitPrice', label: 'P. Venta', render: v => v != null ? `$${formatPrice(v)}` : '-' },
                   { key: 'amount', label: 'Inversion', render: v => `$${v?.toFixed(2)}` },
                   { key: 'rsiAtOpen', label: 'RSI Compra', render: v => v?.toFixed(1) ?? '-' },
                   { key: 'rsiAtClose', label: 'RSI Venta', render: v => v?.toFixed(1) ?? '-' },
@@ -236,8 +236,8 @@ export default function BacktestPage() {
                     <span style={{ color: v >= 0 ? 'var(--green)' : 'var(--red)' }}>{v?.toFixed(2)}%</span>
                   )},
                   { key: 'totalFees', label: 'Fees', render: v => v ? `$${v.toFixed(2)}` : '-' },
-                  { key: 'sma200_1h', label: 'SMA200 1h', render: v => v ? `$${v.toFixed(4)}` : '-' },
-                  { key: 'sma200_4h', label: 'SMA200 4h', render: v => v ? `$${v.toFixed(4)}` : '-' },
+                  { key: 'sma200_1h', label: 'SMA200 1h', render: v => v != null ? `$${formatPrice(v)}` : '-' },
+                  { key: 'sma200_4h', label: 'SMA200 4h', render: v => v != null ? `$${formatPrice(v)}` : '-' },
                 ]}
                 data={[...result.trades].reverse()}
                 emptyText="Sin operaciones"
@@ -324,6 +324,15 @@ const inputStyle = {
   background: 'var(--bg)', border: '1px solid var(--surface2)', borderRadius: 6, color: 'var(--text)',
 };
 
+function formatPrice(val) {
+  if (val == null) return '-';
+  const abs = Math.abs(val);
+  if (abs >= 1000) return val.toFixed(2);
+  if (abs >= 1) return val.toFixed(4);
+  if (abs >= 0.01) return val.toFixed(6);
+  return val.toFixed(8);
+}
+
 function formatPnl(val) {
   if (val === null || val === undefined) return '-';
   return val >= 0 ? `+$${val.toFixed(2)}` : `-$${Math.abs(val).toFixed(2)}`;
@@ -349,8 +358,8 @@ function exportCSV(result, form, timezone) {
     formatTs(t.openedAt, timezone),
     formatTs(t.closedAt, timezone),
     formatDuration(t.duration),
-    t.entryPrice?.toFixed(4),
-    t.exitPrice?.toFixed(4),
+    formatPrice(t.entryPrice),
+    formatPrice(t.exitPrice),
     t.amount?.toFixed(2),
     t.rsiAtOpen?.toFixed(1) ?? '',
     t.rsiAtClose?.toFixed(1) ?? '',
@@ -359,8 +368,8 @@ function exportCSV(result, form, timezone) {
     t.feeBuy?.toFixed(2) ?? '',
     t.feeSell?.toFixed(2) ?? '',
     t.totalFees?.toFixed(2) ?? '',
-    t.sma200_1h?.toFixed(4) ?? '',
-    t.sma200_4h?.toFixed(4) ?? '',
+    t.sma200_1h != null ? formatPrice(t.sma200_1h) : '',
+    t.sma200_4h != null ? formatPrice(t.sma200_4h) : '',
   ]);
 
   const summary = [
