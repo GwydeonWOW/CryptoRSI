@@ -65,7 +65,7 @@ function authMiddleware(req, res, next) {
 }
 
 function adminMiddleware(req, res, next) {
-  if (!req.user || req.user.role !== 'admin') {
+  if (!req.user || !['admin', 'owner'].includes(req.user.role)) {
     return res.status(403).json({ error: 'Acceso restringido al administrador' });
   }
   next();
@@ -78,6 +78,13 @@ function moderatorMiddleware(req, res, next) {
   next();
 }
 
+function ownerMiddleware(req, res, next) {
+  if (!req.user || req.user.role !== 'owner') {
+    return res.status(403).json({ error: 'Acceso restringido al owner' });
+  }
+  next();
+}
+
 module.exports = {
   hashPassword,
   verifyPassword,
@@ -86,4 +93,5 @@ module.exports = {
   authMiddleware,
   adminMiddleware,
   moderatorMiddleware,
+  ownerMiddleware,
 };

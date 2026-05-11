@@ -3,8 +3,8 @@
  */
 
 const { Router } = require('express');
-const { authMiddleware, adminMiddleware } = require('../auth');
-const { listUsers, createUser, deleteUser } = require('../users');
+const { authMiddleware, adminMiddleware, ownerMiddleware } = require('../auth');
+const { listUsers, createUser, deleteUser, changeUserRole } = require('../users');
 const { validateCreateUser, handleValidationErrors } = require('../middleware/validate');
 
 const router = Router();
@@ -25,6 +25,13 @@ router.delete('/users/:id', authMiddleware, adminMiddleware, (req, res) => {
     return res.status(400).json({ error: 'No puedes eliminar tu propio usuario' });
   }
   const result = deleteUser(req.params.id);
+  if (result.error) return res.status(400).json(result);
+  res.json(result);
+});
+
+router.patch('/users/:id/role', authMiddleware, ownerMiddleware, (req, res) => {
+  const { role } = req.body;
+  const result = changeUserRole(req.params.id, role, req.user.role);
   if (result.error) return res.status(400).json(result);
   res.json(result);
 });

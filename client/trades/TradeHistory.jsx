@@ -69,7 +69,7 @@ export default function TradeHistory({ refreshTrigger, user }) {
 
   useEffect(() => { load(); }, []);
   useEffect(() => { if (refreshTrigger > 0) load(); }, [refreshTrigger]);
-  useEffect(() => { if (refreshTrigger > 0) load(); }, [refreshTrigger]);
+  useEffect(() => { load(); }, [page, filter, tfFilter, dateFrom, dateTo, perPage]);
 
   if (loading && !data) return <Loading text="Cargando simulador..." />;
   if (error && !data) return <div className="history-empty">Error: {error}</div>;

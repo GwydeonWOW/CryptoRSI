@@ -474,9 +474,13 @@ function SimulationSection({ settings, onUpdate, onMsg }) {
         <input type="number" value={amount} onChange={e => setAmount(Number(e.target.value))}
           min={100} step={100} style={{ width: 120 }} />
       </Row>
-      <Row label={`Fee por operacion (${feePercent}%)`}>
-        <input type="range" min="0" max="1" step="0.01" value={feePercent}
-          onChange={e => setFeePercent(parseFloat(e.target.value))} style={{ width: 150 }} />
+      <Row label="Fee por operacion (%)">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <input type="number" min="0" max="10" step="0.01" value={feePercent}
+            onChange={e => setFeePercent(Math.min(10, Math.max(0, parseFloat(e.target.value) || 0)))}
+            style={{ width: 80, textAlign: 'right' }} />
+          <span style={{ fontSize: '0.85rem', color: 'var(--text-dim)' }}>%</span>
+        </div>
       </Row>
 
       <div style={{ marginTop: '1rem' }}>

@@ -1,10 +1,28 @@
 import { useState, useEffect } from 'react';
+import { useToast } from '../hooks/useToast';
 
-export default function UserPanel() {
+const ROLE_LABELS = {
+  owner: 'Owner',
+  admin: 'Admin',
+  moderator: 'Moderador',
+  user: 'Usuario',
+};
+
+const ROLE_COLORS = {
+  owner: { bg: 'rgba(234,179,8,0.15)', color: 'var(--gold, #eab308)' },
+  admin: { bg: 'rgba(59,130,246,0.15)', color: 'var(--blue)' },
+  moderator: { bg: 'rgba(139,92,246,0.15)', color: '#8b5cf6' },
+  user: { bg: 'rgba(148,163,184,0.1)', color: 'var(--text-dim)' },
+};
+
+export default function UserPanel({ user: currentUser }) {
   const [users, setUsers] = useState([]);
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({ username: '', password: '', displayName: '', role: 'user' });
   const [msg, setMsg] = useState(null);
+  const { addToast } = useToast();
+
+  const isOwner = currentUser?.role === 'owner';
 
   function authHeaders() {
     return {
@@ -60,6 +78,22 @@ export default function UserPanel() {
     }
   }
 
+  async function handleRoleChange(userId, newRole) {
+    try {
+      const res = await fetch(`/api/users/${userId}/role`, {
+        method: 'PATCH',
+        headers: authHeaders(),
+        body: JSON.stringify({ role: newRole }),
+      });
+      const data = await res.json();
+      if (!res.ok) { addToast('error', data.error); return; }
+      addToast('success', `Rol cambiado a ${ROLE_LABELS[newRole]}`);
+      loadUsers();
+    } catch (e) {
+      addToast('error', e.message);
+    }
+  }
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
@@ -106,7 +140,9 @@ export default function UserPanel() {
             <select value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}
               style={{ width: '100%', padding: '0.4rem 0.6rem', marginTop: 2, background: 'var(--bg)', border: '1px solid var(--surface2)', borderRadius: 6, color: 'var(--text)' }}>
               <option value="user">Usuario</option>
+              <option value="moderator">Moderador</option>
               <option value="admin">Admin</option>
+              {isOwner && <option value="owner">Owner</option>}
             </select>
           </div>
           <div style={{ gridColumn: '1 / -1', textAlign: 'right' }}>
@@ -127,32 +163,49 @@ export default function UserPanel() {
             </tr>
           </thead>
           <tbody>
-            {users.map(u => (
-              <tr key={u.id} style={{ borderBottom: '1px solid var(--surface2)' }}>
-                <td style={{ padding: '0.6rem 1rem', fontWeight: 600 }}>{u.username}</td>
-                <td style={{ padding: '0.6rem 1rem' }}>{u.displayName}</td>
-                <td style={{ padding: '0.6rem 1rem' }}>
-                  <span style={{
-                    padding: '2px 8px', borderRadius: 4, fontSize: '0.75rem', fontWeight: 600,
-                    background: u.role === 'admin' ? 'rgba(59,130,246,0.15)' : 'rgba(148,163,184,0.1)',
-                    color: u.role === 'admin' ? 'var(--blue)' : 'var(--text-dim)',
-                  }}>
-                    {u.role === 'admin' ? 'Admin' : 'Usuario'}
-                  </span>
-                </td>
-                <td style={{ padding: '0.6rem 1rem', color: 'var(--text-dim)', fontSize: '0.75rem' }}>
-                  {new Date(u.createdAt).toLocaleDateString('es-ES')}
-                </td>
-                <td style={{ padding: '0.6rem 1rem', textAlign: 'right' }}>
-                  {u.id !== 'admin_001' && (
-                    <button className="btn btn-sm" style={{ color: 'var(--red)', background: 'rgba(239,68,68,0.1)' }}
-                      onClick={() => handleDelete(u.id, u.username)}>
-                      Eliminar
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ))}
+            {users.map(u => {
+              const rc = ROLE_COLORS[u.role] || ROLE_COLORS.user;
+              return (
+                <tr key={u.id} style={{ borderBottom: '1px solid var(--surface2)' }}>
+                  <td style={{ padding: '0.6rem 1rem', fontWeight: 600 }}>{u.username}</td>
+                  <td style={{ padding: '0.6rem 1rem' }}>{u.displayName}</td>
+                  <td style={{ padding: '0.6rem 1rem' }}>
+                    {isOwner && u.id !== currentUser?.id ? (
+                      <select value={u.role}
+                        onChange={e => handleRoleChange(u.id, e.target.value)}
+                        style={{
+                          padding: '2px 6px', borderRadius: 4, fontSize: '0.75rem', fontWeight: 600,
+                          background: rc.bg, color: rc.color,
+                          border: `1px solid ${rc.color}40`, cursor: 'pointer',
+                        }}>
+                        <option value="owner">Owner</option>
+                        <option value="admin">Admin</option>
+                        <option value="moderator">Moderador</option>
+                        <option value="user">Usuario</option>
+                      </select>
+                    ) : (
+                      <span style={{
+                        padding: '2px 8px', borderRadius: 4, fontSize: '0.75rem', fontWeight: 600,
+                        background: rc.bg, color: rc.color,
+                      }}>
+                        {ROLE_LABELS[u.role] || u.role}
+                      </span>
+                    )}
+                  </td>
+                  <td style={{ padding: '0.6rem 1rem', color: 'var(--text-dim)', fontSize: '0.75rem' }}>
+                    {new Date(u.createdAt).toLocaleDateString('es-ES')}
+                  </td>
+                  <td style={{ padding: '0.6rem 1rem', textAlign: 'right' }}>
+                    {u.id !== currentUser?.id && (
+                      <button className="btn btn-sm" style={{ color: 'var(--red)', background: 'rgba(239,68,68,0.1)' }}
+                        onClick={() => handleDelete(u.id, u.username)}>
+                        Eliminar
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

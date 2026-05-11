@@ -69,7 +69,7 @@ export default function App() {
 
   if (!user) return <Login onLogin={setUser} />;
 
-  const isAdmin = user.role === 'admin';
+  const isAdmin = user.role === 'admin' || user.role === 'owner';
 
   return (
     <ToastProvider>
@@ -95,7 +95,7 @@ export default function App() {
         )}
         {isAdmin && (
           <div style={{ display: activeTab === 'users' ? 'block' : 'none' }}>
-            <UserPanel />
+            <UserPanel user={user} />
           </div>
         )}
       </div>

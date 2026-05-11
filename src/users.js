@@ -9,12 +9,15 @@ const ADMIN_ID = 'admin_001';
 
 async function ensureAdmin() {
   const db = getDb();
-  const existing = db.prepare('SELECT id FROM users WHERE id = ?').get(ADMIN_ID);
+  const existing = db.prepare('SELECT id, role FROM users WHERE id = ?').get(ADMIN_ID);
   if (!existing) {
     const hashed = await hashPassword('admin123');
     db.prepare('INSERT OR IGNORE INTO users (id, username, password, display_name, role, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-      .run(ADMIN_ID, 'admin', hashed, 'Administrador', 'admin', new Date().toISOString());
+      .run(ADMIN_ID, 'admin', hashed, 'Administrador', 'owner', new Date().toISOString());
     console.log('Default admin user created (admin / admin123) - change password after first login!');
+  } else if (existing.role !== 'owner') {
+    // Upgrade existing admin to owner role
+    db.prepare('UPDATE users SET role = ? WHERE id = ?').run('owner', ADMIN_ID);
   }
 }
 
@@ -48,13 +51,14 @@ async function createUser(username, password, displayName, role = 'user') {
   }
 
   const hashed = await hashPassword(password);
-  const validRoles = ['admin', 'moderator', 'user'];
+  const validRoles = ['owner', 'admin', 'moderator', 'user'];
   const id = 'user_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  const safeRole = validRoles.includes(role) ? role : 'user';
 
   db.prepare('INSERT INTO users (id, username, password, display_name, role, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-    .run(id, username, hashed, displayName || username, validRoles.includes(role) ? role : 'user', new Date().toISOString());
+    .run(id, username, hashed, displayName || username, safeRole, new Date().toISOString());
 
-  return { success: true, user: { id, username, displayName: displayName || username, role: validRoles.includes(role) ? role : 'user' } };
+  return { success: true, user: { id, username, displayName: displayName || username, role: safeRole } };
 }
 
 function deleteUser(id) {
@@ -93,4 +97,25 @@ async function updateUser(id, updates) {
   return { success: true, user: updated };
 }
 
-module.exports = { ensureAdmin, listUsers, getUserById, getUserByUsername, createUser, deleteUser, updateUser };
+function changeUserRole(id, newRole, requesterRole) {
+  const validRoles = ['owner', 'admin', 'moderator', 'user'];
+  if (!validRoles.includes(newRole)) return { error: 'Rol invalido' };
+
+  const db = getDb();
+  const target = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+  if (!target) return { error: 'Usuario no encontrado' };
+
+  // Only owner can promote/demote anyone including other owners
+  if (requesterRole !== 'owner') return { error: 'Solo el owner puede cambiar roles' };
+
+  // Prevent owner from demoting themselves if they're the only owner
+  if (id === ADMIN_ID && newRole !== 'owner') {
+    const ownerCount = db.prepare("SELECT COUNT(*) as c FROM users WHERE role = 'owner'").get().c;
+    if (ownerCount <= 1) return { error: 'No puedes quitarte el rol de owner siendo el unico' };
+  }
+
+  db.prepare('UPDATE users SET role = ? WHERE id = ?').run(newRole, id);
+  return { success: true, user: { id, username: target.username, role: newRole } };
+}
+
+module.exports = { ensureAdmin, listUsers, getUserById, getUserByUsername, createUser, deleteUser, updateUser, changeUserRole };
