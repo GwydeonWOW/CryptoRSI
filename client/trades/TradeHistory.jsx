@@ -44,14 +44,16 @@ export default function TradeHistory({ refreshTrigger, user }) {
   function setDatePreset(preset) {
     const now = new Date();
     let from = '';
+    let to = '';
     switch (preset) {
       case 'today': from = now.toISOString().split('T')[0]; break;
-      case 'week': { const d = new Date(now); d.setDate(d.getDate() - d.getDay()); from = d.toISOString().split('T')[0]; break; }
-      case 'month': from = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`; break;
+      case 'week': { const d = new Date(now); d.setDate(d.getDate() - 7); from = d.toISOString().split('T')[0]; break; }
+      case 'month': { const d = new Date(now); d.setMonth(d.getMonth() - 1); from = d.toISOString().split('T')[0]; break; }
       case '3months': { const d = new Date(now); d.setMonth(d.getMonth() - 3); from = d.toISOString().split('T')[0]; break; }
-      case 'all': from = ''; setDateFrom(''); setDateTo(''); break;
+      case 'all': break;
     }
-    if (preset !== 'all') setDateFrom(from);
+    setDateFrom(from);
+    setDateTo(to);
     setPage(1);
   }
 
@@ -67,9 +69,8 @@ export default function TradeHistory({ refreshTrigger, user }) {
 
   const isSupremeAdmin = user?.id === 'admin_001' || user?.username === 'admin';
 
-  useEffect(() => { load(); }, []);
-  useEffect(() => { if (refreshTrigger > 0) load(); }, [refreshTrigger]);
   useEffect(() => { load(); }, [page, filter, tfFilter, dateFrom, dateTo, perPage]);
+  useEffect(() => { if (refreshTrigger > 0) load(); }, [refreshTrigger]);
 
   if (loading && !data) return <Loading text="Cargando simulador..." />;
   if (error && !data) return <div className="history-empty">Error: {error}</div>;
@@ -86,7 +87,18 @@ export default function TradeHistory({ refreshTrigger, user }) {
     ...history.map(t => t.timeframe).filter(Boolean),
   ])];
 
-  const filteredPositions = positions || [];
+  // Apply local filters to positions (backend only filters history via SQL)
+  const filteredPositions = (positions || []).filter(p => {
+    if (filter !== 'ALL' && p.symbol !== filter) return false;
+    if (tfFilter !== 'ALL' && (p.timeframe || '1d') !== tfFilter) return false;
+    return true;
+  });
+
+  // Filter perToken to only show selected symbol
+  const filteredPerToken = filter !== 'ALL' && perToken
+    ? { [filter]: perToken[filter] }
+    : (perToken || {});
+
   const pag = pagination || { page: 1, limit: 20, total: history.length, totalPages: 1 };
   const fStats = filterStats || { filteredPnl: 0, filteredTrades: 0, filteredWins: 0 };
   const filteredPnl = fStats.filteredPnl;
@@ -109,8 +121,8 @@ export default function TradeHistory({ refreshTrigger, user }) {
         <div className="market-section" style={{ marginBottom: '1.5rem' }}>
           <h3 className="section-title">Resumen por Token</h3>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0.5rem', marginTop: '0.75rem' }}>
-            {symbols.map(sym => (
-              <TokenSummary key={sym} symbol={sym} stats={perToken[sym] || { trades: 0, wins: 0, pnl: 0, pnlPct: [] }} active={filter === sym} onClick={() => setFilter(filter === sym ? 'ALL' : sym)} />
+            {Object.keys(filteredPerToken).map(sym => (
+              <TokenSummary key={sym} symbol={sym} stats={filteredPerToken[sym] || { trades: 0, wins: 0, pnl: 0, pnlPct: [] }} active={filter === sym} onClick={() => { setFilter(filter === sym ? 'ALL' : sym); setPage(1); }} />
             ))}
           </div>
         </div>
