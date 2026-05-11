@@ -1,7 +1,6 @@
 node_modules/
 data/
 data_test_*/
-client/dist/
 .env
 .claude/
 *.bak
