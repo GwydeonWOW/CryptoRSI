@@ -133,7 +133,7 @@ async function fetchCoinCapHistorical(symbol, interval, startMs, endMs) {
 // Simulation Engine
 // ============================================================
 
-function simulateBacktest(candles, config) {
+function simulateBacktest(candles, config, startMs) {
   const {
     amount = 1000,
     feePercent = 0,
@@ -142,23 +142,31 @@ function simulateBacktest(candles, config) {
     rsiPeriod = 14,
   } = config;
 
+  // Pre-calculate ALL RSI values once from the full array (including warm-up).
+  // calculateRSI returns array of length (closes.length - period).
+  // rsi[0] corresponds to closes[period], rsi[j] to closes[period + j].
+  const allCloses = candles.map(c => c.close);
+  const allRsi = calculateRSI(allCloses, rsiPeriod);
+
   const trades = [];
   let position = null;
   let equity = 0;
   const equityCurve = [];
 
-  for (let i = rsiPeriod + 1; i < candles.length; i++) {
-    const closesSoFar = candles.slice(0, i + 1).map(c => c.close);
-    const rsiValues = calculateRSI(closesSoFar, rsiPeriod);
-    const rsi = rsiValues[rsiValues.length - 1];
+  // Iterate candles that have a corresponding RSI value
+  // Candle at index i has RSI = allRsi[i - rsiPeriod] when i >= rsiPeriod
+  for (let i = rsiPeriod; i < candles.length; i++) {
+    const rsi = allRsi[i - rsiPeriod];
     if (rsi === null || rsi === undefined) continue;
 
     const candle = candles[i];
     const price = candle.close;
     const timestamp = candle.timestamp;
     const feeMultiplier = 1 - (feePercent / 100);
+    const inRange = timestamp >= startMs;
 
-    if (rsi <= rsiOversold && !position) {
+    // BUY signal (only within date range)
+    if (rsi <= rsiOversold && !position && inRange) {
       const effectiveAmount = amount * feeMultiplier;
       const quantity = effectiveAmount / price;
       position = {
@@ -167,7 +175,8 @@ function simulateBacktest(candles, config) {
       };
     }
 
-    if (rsi >= rsiOverbought && position) {
+    // SELL signal (only within date range)
+    if (rsi >= rsiOverbought && position && inRange) {
       const exitValue = position.quantity * price * feeMultiplier;
       const pnl = exitValue - position.amount;
       const pnlPct = (pnl / position.amount) * 100;
@@ -185,8 +194,11 @@ function simulateBacktest(candles, config) {
       position = null;
     }
 
-    const openPnl = position ? (position.quantity * price - position.amount) : 0;
-    equityCurve.push({ timestamp, equity: equity + openPnl, rsi, price });
+    // Track equity curve only within date range
+    if (inRange) {
+      const openPnl = position ? (position.quantity * price - position.amount) : 0;
+      equityCurve.push({ timestamp, equity: equity + openPnl, rsi, price });
+    }
   }
 
   if (position) {
@@ -223,6 +235,8 @@ function simulateBacktest(candles, config) {
     if (dd > maxDrawdown) maxDrawdown = dd;
   }
 
+  const candlesInRange = candles.filter(c => c.timestamp >= startMs).length;
+
   return {
     trades,
     stats: {
@@ -235,7 +249,8 @@ function simulateBacktest(candles, config) {
       bestTrade: bestTrade ? { pnl: bestTrade.pnl, pnlPct: bestTrade.pnlPct } : null,
       worstTrade: worstTrade ? { pnl: worstTrade.pnl, pnlPct: worstTrade.pnlPct } : null,
       maxDrawdown,
-      candlesAnalyzed: candles.length,
+      candlesAnalyzed: candlesInRange,
+      warmupCandles: candles.length - candlesInRange,
     },
     equityCurve: equityCurve.length > 500
       ? equityCurve.filter((_, i) => i % Math.ceil(equityCurve.length / 500) === 0)
@@ -278,13 +293,22 @@ router.post('/backtest/run', authMiddleware, adminMiddleware, async (req, res) =
     logger.info({ symbol, timeframe, fromDate, toDate, config }, 'Backtest started');
 
     const interval = timeframe;
-    const candles = await fetchHistoricalCandles(symbol.toUpperCase(), interval, startMs, endMs);
+
+    // Calculate warm-up period: fetch 250 candles before start date for RSI accuracy.
+    // Wilder's smoothing needs significant history to stabilize.
+    const tfMsMap = { '15m': 15 * 60 * 1000, '1h': 60 * 60 * 1000, '4h': 4 * 60 * 60 * 1000, '1d': 24 * 60 * 60 * 1000 };
+    const tfMs = tfMsMap[interval] || 60 * 60 * 1000;
+    const warmupMs = 250 * tfMs;
+    const warmupStart = startMs - warmupMs;
+
+    // Fetch candles from warm-up start to end date
+    const candles = await fetchHistoricalCandles(symbol.toUpperCase(), interval, warmupStart, endMs);
 
     if (candles.length < 30) {
       return res.status(400).json({ error: `Not enough candles (${candles.length}). Need at least 30.` });
     }
 
-    const result = simulateBacktest(candles, config);
+    const result = simulateBacktest(candles, config, startMs);
 
     logger.info({ symbol, trades: result.stats.totalTrades, pnl: result.stats.totalPnl.toFixed(2) }, 'Backtest complete');
 
