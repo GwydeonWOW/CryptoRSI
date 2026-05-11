@@ -265,13 +265,16 @@ router.post('/backtest/run', authMiddleware, adminMiddleware, async (req, res) =
   const {
     symbol, timeframe = '1h', fromDate, toDate,
     amount, feePercent, rsiOversold, rsiOverbought,
+    startMs: clientStartMs, endMs: clientEndMs,
   } = req.body;
 
   if (!symbol) return res.status(400).json({ error: 'Symbol is required' });
   if (!fromDate || !toDate) return res.status(400).json({ error: 'Date range is required' });
 
-  const startMs = new Date(fromDate).getTime();
-  const endMs = new Date(toDate).getTime();
+  // Prefer timestamps sent by the client (computed in user's local timezone).
+  // Fall back to server-side UTC parsing for backwards compatibility.
+  const startMs = clientStartMs != null ? clientStartMs : new Date(fromDate).getTime();
+  const endMs = clientEndMs != null ? clientEndMs : new Date(toDate + 'T23:59:59').getTime();
 
   if (isNaN(startMs) || isNaN(endMs)) return res.status(400).json({ error: 'Invalid date format' });
   if (startMs >= endMs) return res.status(400).json({ error: 'Start date must be before end date' });

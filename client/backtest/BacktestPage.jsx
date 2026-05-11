@@ -80,10 +80,17 @@ export default function BacktestPage() {
     setLoading(true);
     setResult(null);
     try {
+      // Send timestamps in user's local timezone so the backend
+      // uses the correct date range regardless of server timezone
+      const [fy, fm, fd] = form.fromDate.split('-').map(Number);
+      const [ty, tm, td] = form.toDate.split('-').map(Number);
+      const startMs = new Date(fy, fm - 1, fd).getTime();
+      const endMs = new Date(ty, tm - 1, td, 23, 59, 59, 999).getTime();
+
       const res = await fetch('/api/backtest/run', {
         method: 'POST',
         headers: getAuthHeaders(),
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, startMs, endMs }),
       });
       const data = await res.json();
       if (!res.ok) { addToast('error', data.error); return; }
