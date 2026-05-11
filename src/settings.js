@@ -103,6 +103,7 @@ function saveSettings(updates) {
     simulation: {
       enabled: updates.simulation?.enabled ?? current.simulation?.enabled ?? true,
       amount: updates.simulation?.amount ?? current.simulation?.amount ?? 1000,
+      feePercent: updates.simulation?.feePercent ?? current.simulation?.feePercent ?? 0,
       timeframes: _mergeSimTimeframes({
         ...current.simulation?.timeframes,
         ...updates.simulation?.timeframes,
