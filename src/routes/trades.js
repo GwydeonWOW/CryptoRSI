@@ -83,7 +83,7 @@ router.get('/trade/stats', authMiddleware, (req, res) => {
   res.json(getStats(req.user.id, { from, to }));
 });
 
-router.get('/trade/auto-stats', authMiddleware, adminMiddleware, async (req, res) => {
+router.get('/trade/auto-stats', authMiddleware, async (req, res) => {
   const { from, to, page, limit, symbol, timeframe } = req.query;
   const opts = { from, to };
   const usePagination = page || limit;

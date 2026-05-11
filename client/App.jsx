@@ -83,11 +83,9 @@ export default function App() {
         <div style={{ display: activeTab === 'market' ? 'block' : 'none' }}>
           <MarketAnalysis refreshTrigger={triggers.market} />
         </div>
-        {isAdmin && (
-          <div style={{ display: activeTab === 'trades' ? 'block' : 'none' }}>
-            <TradeHistory refreshTrigger={triggers.trades} user={user} />
-          </div>
-        )}
+        <div style={{ display: activeTab === 'trades' ? 'block' : 'none' }}>
+          <TradeHistory refreshTrigger={triggers.trades} user={user} />
+        </div>
         {isAdmin && (
           <div style={{ display: activeTab === 'settings' ? 'block' : 'none' }}>
             <Settings />
