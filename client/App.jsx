@@ -10,6 +10,7 @@ import UserPanel from './auth/UserPanel';
 import ProfileModal from './auth/ProfileModal';
 import Login from './auth/Login';
 import { ToastProvider } from './hooks/useToast';
+import { isAdmin as checkIsAdmin } from './hooks/useRoles';
 
 export default function App() {
   const [user, setUser] = useState(null);
@@ -69,7 +70,7 @@ export default function App() {
 
   if (!user) return <Login onLogin={setUser} />;
 
-  const isAdmin = user.role === 'admin' || user.role === 'owner';
+  const isAdmin = checkIsAdmin(user);
 
   return (
     <ToastProvider>

@@ -3,6 +3,7 @@ import { useAuthAPI, getAuthHeaders } from '../hooks/useAPI';
 import Loading from '../components/Loading';
 import { formatPrice } from '../dashboard/TokenCard';
 import { useToast } from '../hooks/useToast';
+import { isOwner } from '../hooks/useRoles';
 import SortableTable from '../components/SortableTable';
 
 export default function TradeHistory({ refreshTrigger, user }) {
@@ -67,7 +68,7 @@ export default function TradeHistory({ refreshTrigger, user }) {
     } catch (e) { addToast('error', e.message); }
   }
 
-  const isSupremeAdmin = user?.id === 'admin_001' || user?.username === 'admin';
+  const isSupremeAdmin = isOwner(user);
 
   useEffect(() => { load(); }, [page, filter, tfFilter, dateFrom, dateTo, perPage]);
   useEffect(() => { if (refreshTrigger > 0) load(); }, [refreshTrigger]);

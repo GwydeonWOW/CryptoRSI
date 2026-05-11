@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import MiniSparkline from './MiniSparkline';
+import { roleLabel, isModerator } from '../hooks/useRoles';
 
 export default function Header({ onRefresh, refreshing, lastUpdated, user, onLogout, onProfile }) {
   return (
@@ -38,7 +39,7 @@ export default function Header({ onRefresh, refreshing, lastUpdated, user, onLog
               <button className="btn btn-sm" onClick={onProfile}
                 style={{ color: 'var(--text)', background: 'rgba(59,130,246,0.1)' }}>
                 {user.displayName || user.username}
-                {user.role === 'admin' && <span style={{ color: 'var(--blue)', marginLeft: 4, fontSize: '0.65rem' }}>Admin</span>}
+                {isModerator(user) && <span style={{ color: user.role === 'owner' ? 'var(--gold, #eab308)' : 'var(--blue)', marginLeft: 4, fontSize: '0.65rem' }}>{roleLabel(user.role)}</span>}
               </button>
               <button className="btn btn-sm" onClick={onLogout}
                 style={{ color: 'var(--text-dim)', background: 'rgba(148,163,184,0.1)' }}>

@@ -1,12 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useToast } from '../hooks/useToast';
-
-const ROLE_LABELS = {
-  owner: 'Owner',
-  admin: 'Admin',
-  moderator: 'Moderador',
-  user: 'Usuario',
-};
+import { isOwner, roleLabel } from '../hooks/useRoles';
 
 const ROLE_COLORS = {
   owner: { bg: 'rgba(234,179,8,0.15)', color: 'var(--gold, #eab308)' },
@@ -88,7 +82,7 @@ export default function UserPanel({ user: currentUser }) {
       });
       const data = await res.json();
       if (!res.ok) { addToast('error', data.error); return; }
-      addToast('success', `Rol cambiado a ${ROLE_LABELS[newRole]}`);
+      addToast('success', `Rol cambiado a ${roleLabel(newRole)}`);
       loadUsers();
     } catch (e) {
       addToast('error', e.message);
@@ -224,7 +218,7 @@ export default function UserPanel({ user: currentUser }) {
                         padding: '2px 8px', borderRadius: 4, fontSize: '0.75rem', fontWeight: 600,
                         background: rc.bg, color: rc.color,
                       }}>
-                        {ROLE_LABELS[u.role] || u.role}
+                        {roleLabel(u.role)}
                       </span>
                     )}
                   </td>

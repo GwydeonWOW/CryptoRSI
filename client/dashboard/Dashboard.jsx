@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAPI } from '../hooks/useAPI';
+import { isModerator } from '../hooks/useRoles';
 import TokenCard from './TokenCard';
 import AddTokenModal from './AddTokenModal';
 import Loading from '../components/Loading';
@@ -31,7 +32,7 @@ export default function Dashboard({ refreshTrigger, user }) {
           <span><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: 'var(--yellow)', marginRight: 4 }}></span>Esperar</span>
           <span><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: 'var(--red)', marginRight: 4 }}></span>Vender (RSI ≥ 70)</span>
         </div>
-        {user?.role === 'admin' && (
+        {isModerator(user) && (
           <button className="btn btn-primary btn-sm" onClick={() => setShowAddModal(true)}>+ Anadir Token</button>
         )}
       </div>
@@ -39,7 +40,7 @@ export default function Dashboard({ refreshTrigger, user }) {
       {loading && tokens.length === 0 ? <Loading text="Cargando datos RSI..." /> : (
         <div className="tokens-grid">
           {tokens.map(token => (
-            <TokenCard key={token.symbol} data={token} onRefresh={refresh} isAdmin={user?.role === 'admin'} />
+            <TokenCard key={token.symbol} data={token} onRefresh={refresh} isAdmin={isModerator(user)} />
           ))}
         </div>
       )}

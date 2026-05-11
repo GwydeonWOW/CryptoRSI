@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { getAuthHeaders } from '../hooks/useAPI';
+import { roleLabel } from '../hooks/useRoles';
 
 export default function ProfileModal({ user, onClose, onUpdated }) {
   const [displayName, setDisplayName] = useState(user.displayName || '');
@@ -68,7 +69,7 @@ export default function ProfileModal({ user, onClose, onUpdated }) {
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
             <span style={{ color: 'var(--text-dim)' }}>Rol</span>
-            <span>{user.role === 'admin' ? 'Admin' : 'Usuario'}</span>
+            <span>{roleLabel(user.role)}</span>
           </div>
         </div>
 

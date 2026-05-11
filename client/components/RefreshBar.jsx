@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useInterval } from '../hooks/useInterval';
+import { isAdmin } from '../hooks/useRoles';
 
 const INTERVALS = [
   { minutes: 0, label: 'OFF' },
@@ -13,7 +14,7 @@ const INTERVALS = [
 
 export default function RefreshBar({ onRefresh, user }) {
   const [intervalMin, setIntervalMin] = useState(5);
-  const canChange = user?.role === 'owner' || user?.role === 'admin';
+  const canChange = isAdmin(user);
 
   const delayMs = intervalMin > 0 ? intervalMin * 60 * 1000 : null;
   useInterval(onRefresh, delayMs);
