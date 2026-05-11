@@ -75,7 +75,7 @@ export default function App() {
     <ToastProvider>
       <Header onRefresh={refresh} refreshing={refreshing} lastUpdated={lastUpdated} user={user} onLogout={handleLogout} onProfile={() => setShowProfile(true)} />
       <div style={{ maxWidth: 1440, margin: '0 auto', padding: '1.5rem 2rem' }}>
-        <RefreshBar onRefresh={refresh} />
+        <RefreshBar onRefresh={refresh} user={user} />
         <TabNav activeTab={activeTab} onTabChange={handleTabChange} isAdmin={isAdmin} />
         <div style={{ display: activeTab === 'dashboard' ? 'block' : 'none' }}>
           <Dashboard refreshTrigger={triggers.dashboard} user={user} />

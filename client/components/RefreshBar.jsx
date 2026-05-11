@@ -11,8 +11,9 @@ const INTERVALS = [
   { minutes: 60, label: '1h' },
 ];
 
-export default function RefreshBar({ onRefresh }) {
+export default function RefreshBar({ onRefresh, user }) {
   const [intervalMin, setIntervalMin] = useState(5);
+  const canChange = user?.role === 'owner' || user?.role === 'admin';
 
   const delayMs = intervalMin > 0 ? intervalMin * 60 * 1000 : null;
   useInterval(onRefresh, delayMs);
@@ -20,15 +21,21 @@ export default function RefreshBar({ onRefresh }) {
   return (
     <div className="refresh-bar">
       <span className="label">Auto-actualizar:</span>
-      {INTERVALS.map(({ minutes, label }) => (
-        <button
-          key={minutes}
-          className={`interval-btn ${intervalMin === minutes ? (minutes === 0 ? 'off active' : 'active') : ''}`}
-          onClick={() => setIntervalMin(minutes)}
-        >
-          {label}
-        </button>
-      ))}
+      {INTERVALS.map(({ minutes, label }) => {
+        const isActive = intervalMin === minutes;
+        return (
+          <button
+            key={minutes}
+            className={`interval-btn ${isActive ? (minutes === 0 ? 'off active' : 'active') : ''} ${!canChange ? 'disabled' : ''}`}
+            onClick={() => canChange && setIntervalMin(minutes)}
+            disabled={!canChange}
+            style={!canChange ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
+          >
+            {label}
+          </button>
+        );
+      })}
+      {!canChange && <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)', marginLeft: 4 }}>(solo admins)</span>}
     </div>
   );
 }
