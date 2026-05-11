@@ -174,6 +174,15 @@ export default function BacktestPage() {
       {/* Results */}
       {result && (
         <div>
+          {/* Export buttons */}
+          {result.trades.length > 0 && (
+            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+              <button className="btn btn-sm" onClick={() => exportCSV(result, form)}
+                style={{ padding: '0.4rem 1rem', background: 'var(--surface2)', color: 'var(--text)', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: '0.8rem' }}>
+                Exportar CSV
+              </button>
+            </div>
+          )}
           {/* Stats Cards */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '0.75rem', marginBottom: '1.5rem' }}>
             <StatCard label="Operaciones" value={result.stats.totalTrades} />
@@ -185,7 +194,6 @@ export default function BacktestPage() {
               color={result.stats.avgPnlPct >= 0 ? 'var(--green)' : 'var(--red)'} />
             <StatCard label="Mejor" value={result.stats.bestTrade ? formatPnl(result.stats.bestTrade.pnl) : '-'} color="var(--green)" />
             <StatCard label="Peor" value={result.stats.worstTrade ? formatPnl(result.stats.worstTrade.pnl) : '-'} color="var(--red)" />
-            <StatCard label="Max Drawdown" value={`-$${result.stats.maxDrawdown.toFixed(2)}`} color="var(--red)" />
             <StatCard label="Velas analizadas" value={result.stats.candlesAnalyzed} color="var(--text-dim)" />
           </div>
 
@@ -320,4 +328,35 @@ function formatDuration(ms) {
   if (days > 0) return `${days}d ${hours % 24}h`;
   if (hours > 0) return `${hours}h`;
   return `${Math.floor(ms / 60000)}m`;
+}
+
+function exportCSV(result, form) {
+  const headers = ['Apertura', 'Cierre', 'Duracion', 'P. Compra', 'P. Venta', 'Inversion', 'RSI Compra', 'RSI Venta', 'P&L ($)', 'P&L (%)'];
+  const rows = result.trades.map(t => [
+    formatTs(t.openedAt),
+    formatTs(t.closedAt),
+    formatDuration(t.duration),
+    t.entryPrice?.toFixed(4),
+    t.exitPrice?.toFixed(4),
+    t.amount?.toFixed(2),
+    t.rsiAtOpen?.toFixed(1) ?? '',
+    t.rsiAtClose?.toFixed(1) ?? '',
+    t.pnl?.toFixed(2),
+    t.pnlPct?.toFixed(2),
+  ]);
+
+  const summary = [
+    '',
+    `Backtest: ${form.symbol} | ${form.timeframe} | ${form.fromDate} - ${form.toDate}`,
+    `Operaciones: ${result.stats.totalTrades} | Win Rate: ${result.stats.winRate.toFixed(1)}% | P&L Total: ${result.stats.totalPnl.toFixed(2)}`,
+  ];
+
+  const csv = [headers.join(','), ...rows.map(r => r.join(',')), ...summary].join('\n');
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `backtest_${form.symbol}_${form.timeframe}_${form.fromDate}_${form.toDate}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
 }

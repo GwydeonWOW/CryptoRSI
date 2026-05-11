@@ -133,7 +133,7 @@ async function fetchCoinCapHistorical(symbol, interval, startMs, endMs) {
 // Simulation Engine
 // ============================================================
 
-function simulateBacktest(candles, config, startMs) {
+function simulateBacktest(candles, config, startMs, timeframe) {
   const {
     amount = 1000,
     feePercent = 0,
@@ -142,22 +142,24 @@ function simulateBacktest(candles, config, startMs) {
     rsiPeriod = 14,
   } = config;
 
-  // Pre-calculate ALL RSI values once from the full array (including warm-up).
-  // calculateRSI returns array of length (closes.length - period).
-  // rsi[0] corresponds to closes[period], rsi[j] to closes[period + j].
-  const allCloses = candles.map(c => c.close);
-  const allRsi = calculateRSI(allCloses, rsiPeriod);
+  // Match the live system's candle window exactly.
+  // Live system uses CANDLE_LIMIT=100 (250 for 1h) to compute RSI.
+  // We use a sliding window of the same size so backtest RSI = live RSI.
+  const CANDLE_WINDOW = timeframe === '1h' ? 250 : 100;
 
   const trades = [];
   let position = null;
   let equity = 0;
   const equityCurve = [];
 
-  // Iterate candles that have a corresponding RSI value
-  // Candle at index i has RSI = allRsi[i - rsiPeriod] when i >= rsiPeriod
   for (let i = rsiPeriod; i < candles.length; i++) {
-    const rsi = allRsi[i - rsiPeriod];
-    if (rsi === null || rsi === undefined) continue;
+    // Sliding window: take the last CANDLE_WINDOW closes ending at candle i
+    const windowStart = Math.max(0, i - CANDLE_WINDOW + 1);
+    const windowCloses = candles.slice(windowStart, i + 1).map(c => c.close);
+    const windowRsi = calculateRSI(windowCloses, rsiPeriod);
+    if (windowRsi.length === 0) continue;
+
+    const rsi = windowRsi[windowRsi.length - 1];
 
     const candle = candles[i];
     const price = candle.close;
@@ -227,14 +229,6 @@ function simulateBacktest(candles, config, startMs) {
   const bestTrade = trades.length > 0 ? trades.reduce((best, t) => t.pnl > best.pnl ? t : best) : null;
   const worstTrade = trades.length > 0 ? trades.reduce((worst, t) => t.pnl < worst.pnl ? t : worst) : null;
 
-  let maxDrawdown = 0;
-  let peak = 0;
-  for (const point of equityCurve) {
-    if (point.equity > peak) peak = point.equity;
-    const dd = peak - point.equity;
-    if (dd > maxDrawdown) maxDrawdown = dd;
-  }
-
   const candlesInRange = candles.filter(c => c.timestamp >= startMs).length;
 
   return {
@@ -248,7 +242,6 @@ function simulateBacktest(candles, config, startMs) {
       avgPnlPct,
       bestTrade: bestTrade ? { pnl: bestTrade.pnl, pnlPct: bestTrade.pnlPct } : null,
       worstTrade: worstTrade ? { pnl: worstTrade.pnl, pnlPct: worstTrade.pnlPct } : null,
-      maxDrawdown,
       candlesAnalyzed: candlesInRange,
       warmupCandles: candles.length - candlesInRange,
     },
@@ -308,7 +301,7 @@ router.post('/backtest/run', authMiddleware, adminMiddleware, async (req, res) =
       return res.status(400).json({ error: `Not enough candles (${candles.length}). Need at least 30.` });
     }
 
-    const result = simulateBacktest(candles, config, startMs);
+    const result = simulateBacktest(candles, config, startMs, interval);
 
     logger.info({ symbol, trades: result.stats.totalTrades, pnl: result.stats.totalPnl.toFixed(2) }, 'Backtest complete');
 
