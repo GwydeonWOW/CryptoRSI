@@ -20,6 +20,7 @@ export default function UserPanel({ user: currentUser }) {
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({ username: '', password: '', displayName: '', role: 'user' });
   const [msg, setMsg] = useState(null);
+  const [rateLimits, setRateLimits] = useState([]);
   const { addToast } = useToast();
 
   const isOwner = currentUser?.role === 'owner';
@@ -93,6 +94,41 @@ export default function UserPanel({ user: currentUser }) {
       addToast('error', e.message);
     }
   }
+
+  async function loadRateLimits() {
+    try {
+      const res = await fetch('/api/admin/rate-limits', { headers: authHeaders() });
+      if (!res.ok) return;
+      const data = await res.json();
+      setRateLimits(data.rateLimits || []);
+    } catch {}
+  }
+
+  async function clearRateLimit(key) {
+    try {
+      const res = await fetch(`/api/admin/rate-limits/${encodeURIComponent(key)}`, {
+        method: 'DELETE', headers: authHeaders(),
+      });
+      const data = await res.json();
+      if (!res.ok) { addToast('error', data.error); return; }
+      addToast('success', data.message);
+      loadRateLimits();
+    } catch (e) { addToast('error', e.message); }
+  }
+
+  async function clearAllRateLimits() {
+    try {
+      const res = await fetch('/api/admin/rate-limits', {
+        method: 'DELETE', headers: authHeaders(),
+      });
+      const data = await res.json();
+      if (!res.ok) { addToast('error', data.error); return; }
+      addToast('success', `${data.cleared} IPs desbloqueadas`);
+      loadRateLimits();
+    } catch (e) { addToast('error', e.message); }
+  }
+
+  useEffect(() => { if (isOwner) loadRateLimits(); }, [isOwner]);
 
   return (
     <div>
@@ -209,6 +245,62 @@ export default function UserPanel({ user: currentUser }) {
           </tbody>
         </table>
       </div>
+
+      {/* Rate Limits — Owner only */}
+      {isOwner && (
+        <div style={{ marginTop: '1.5rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+            <h3 className="section-title" style={{ marginBottom: 0 }}>IPs Bloqueadas (Rate Limit)</h3>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button className="btn btn-secondary btn-sm" onClick={loadRateLimits}>Actualizar</button>
+              {rateLimits.length > 0 && (
+                <button className="btn btn-sm" onClick={clearAllRateLimits}
+                  style={{ color: 'var(--red)', background: 'rgba(239,68,68,0.1)' }}>
+                  Desbloquear todas
+                </button>
+              )}
+            </div>
+          </div>
+          {rateLimits.length === 0 ? (
+            <div style={{ padding: '1rem', background: 'var(--surface)', borderRadius: 10, border: '1px solid var(--surface2)', color: 'var(--text-dim)', fontSize: '0.85rem', textAlign: 'center' }}>
+              No hay IPs bloqueadas
+            </div>
+          ) : (
+            <div style={{ background: 'var(--surface)', border: '1px solid var(--surface2)', borderRadius: 10, overflow: 'hidden' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid var(--surface2)' }}>
+                    <th style={{ padding: '0.5rem 1rem', textAlign: 'left', color: 'var(--text-dim)', fontWeight: 500 }}>IP / Key</th>
+                    <th style={{ padding: '0.5rem 1rem', textAlign: 'center', color: 'var(--text-dim)', fontWeight: 500 }}>Intentos</th>
+                    <th style={{ padding: '0.5rem 1rem', textAlign: 'left', color: 'var(--text-dim)', fontWeight: 500 }}>Resetea</th>
+                    <th style={{ padding: '0.5rem 1rem', textAlign: 'right', color: 'var(--text-dim)', fontWeight: 500 }}>Accion</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rateLimits.map(entry => {
+                    const ip = entry.key.includes(':') ? entry.key.split(':').slice(1).join(':') : entry.key;
+                    return (
+                      <tr key={entry.key} style={{ borderBottom: '1px solid var(--surface2)' }}>
+                        <td style={{ padding: '0.5rem 1rem', fontFamily: 'monospace', fontSize: '0.8rem' }}>{ip}</td>
+                        <td style={{ padding: '0.5rem 1rem', textAlign: 'center', fontWeight: 600, color: 'var(--red)' }}>{entry.hits}</td>
+                        <td style={{ padding: '0.5rem 1rem', color: 'var(--text-dim)', fontSize: '0.75rem' }}>
+                          {entry.resetTime ? new Date(entry.resetTime).toLocaleTimeString('es-ES') : '-'}
+                        </td>
+                        <td style={{ padding: '0.5rem 1rem', textAlign: 'right' }}>
+                          <button className="btn btn-sm" onClick={() => clearRateLimit(entry.key)}
+                            style={{ color: 'var(--green)', background: 'rgba(34,197,94,0.1)' }}>
+                            Desbloquear
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
