@@ -3,8 +3,10 @@ import RSIChart from './RSIChart';
 import MiniSparkline from '../components/MiniSparkline';
 import { useState } from 'react';
 import { getAuthHeaders } from '../hooks/useAPI';
+import { useToast } from '../hooks/useToast';
 
 export default function TokenCard({ data, onRefresh, isAdmin }) {
+  const { addToast } = useToast();
   if (data.error) {
     return (
       <div className="token-card" style={{ background: 'var(--surface)', borderRadius: 12, padding: '1.25rem', border: '1px solid var(--surface2)' }}>
@@ -29,9 +31,9 @@ export default function TokenCard({ data, onRefresh, isAdmin }) {
         headers: getAuthHeaders(),
       });
       const data = await res.json();
-      if (data.success) onRefresh();
-      else alert(data.message || 'Error al eliminar');
-    } catch (e) { alert('Error: ' + e.message); }
+      if (data.success) { onRefresh(); addToast('success', `${symbol} eliminado`); }
+      else addToast('error', data.message || 'Error al eliminar');
+    } catch (e) { addToast('error', e.message); }
   }
 
   return (
@@ -62,9 +64,9 @@ export default function TokenCard({ data, onRefresh, isAdmin }) {
       )}
 
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+      <div className="token-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
         <div>
-          <h3 style={{ fontSize: '1.1rem', fontWeight: 600 }}>
+          <h3 className="token-card-header" style={{ fontSize: '1.1rem', fontWeight: 600 }}>
             <a href={`https://www.tradingview.com/chart/?symbol=BINANCE:${data.symbol}USDT`} target="_blank" rel="noopener noreferrer"
               className="tv-link">
               {data.symbol} <span style={{ fontSize: '0.6rem', opacity: 0.5 }}>&#8599;</span>
@@ -74,7 +76,7 @@ export default function TokenCard({ data, onRefresh, isAdmin }) {
         </div>
         <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div style={{ fontSize: '1.2rem', fontWeight: 600 }}>{formatPrice(data.price)}</div>
+            <div className="token-card-price" style={{ fontSize: '1.2rem', fontWeight: 600 }}>{formatPrice(data.price)}</div>
             {isAdmin && (
               <button onClick={() => removeToken(data.symbol)} title="Eliminar token"
                 style={{

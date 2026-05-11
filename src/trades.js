@@ -1,234 +1,263 @@
 /**
- * Trades Store - User-isolated JSON-based storage for simulated trades
+ * Trades Store — SQLite-based storage for simulated trades
  * Supports multi-timeframe positions: each (symbol, timeframe) can have 1 open position.
  */
 
-const fs = require('fs');
-const path = require('path');
-const { getDataDir, ensureDataDir, readJSON, writeJSON } = require('./storage');
+const { getDb } = require('./db');
 
-const ADMIN_ID = 'admin_001';
-
-function getTradesPath(userId) {
-  ensureDataDir();
-  const userPath = path.join(getDataDir(), `trades_${userId}.json`);
-
-  // Migration: legacy trades.json -> trades_admin_001.json
-  if (userId === ADMIN_ID && !fs.existsSync(userPath)) {
-    const legacyPath = path.join(getDataDir(), 'trades.json');
-    if (fs.existsSync(legacyPath)) {
-      fs.renameSync(legacyPath, userPath);
-      console.log('Migrated legacy trades.json -> trades_admin_001.json');
-    }
-  }
-
-  return userPath;
-}
-
-function _migrateEntry(entry, defaultTf) {
-  if (!entry) return entry;
-  let changed = false;
-
-  if (!entry.timeframe) {
-    entry.timeframe = defaultTf;
-    changed = true;
-  }
-
-  if (!entry.rsi && entry.rsiAtOpen != null) {
-    entry.rsi = { rsi15m: null, rsi1h: null, rsi4h: null, rsi1d: null, sma200: null, signalRSI: entry.rsiAtOpen };
-    if (defaultTf === '1h') entry.rsi.rsi1h = entry.rsiAtOpen;
-    else if (defaultTf === '15m') entry.rsi.rsi15m = entry.rsiAtOpen;
-    else if (defaultTf === '4h') entry.rsi.rsi4h = entry.rsiAtOpen;
-    else entry.rsi.rsi1d = entry.rsiAtOpen;
-    changed = true;
-  }
-
-  return changed;
-}
-
-function loadTrades(userId) {
-  const trades = readJSON(getTradesPath(userId), { positions: [], history: [] });
-
-  // Migrate legacy entries to new format
-  const alertConfig = _getDefaultTf();
-  let dirty = false;
-  for (const pos of trades.positions || []) {
-    if (_migrateEntry(pos, alertConfig)) dirty = true;
-  }
-  for (const trade of trades.history || []) {
-    if (_migrateEntry(trade, alertConfig)) dirty = true;
-    if (!trade.rsiClose && trade.rsiAtClose != null) {
-      trade.rsiClose = { rsi15m: null, rsi1h: null, rsi4h: null, rsi1d: null, sma200: null, signalRSI: trade.rsiAtClose };
-      if (alertConfig === '1h') trade.rsiClose.rsi1h = trade.rsiAtClose;
-      else if (alertConfig === '15m') trade.rsiClose.rsi15m = trade.rsiAtClose;
-      else if (alertConfig === '4h') trade.rsiClose.rsi4h = trade.rsiAtClose;
-      else trade.rsiClose.rsi1d = trade.rsiAtClose;
-      dirty = true;
-    }
-  }
-  if (dirty) saveTrades(userId, trades);
-
-  return trades;
-}
-
-function _getDefaultTf() {
-  try {
-    const { loadSettings } = require('./settings');
-    return loadSettings().alerts?.generic?.alertTimeframe || '1d';
-  } catch (e) {
-    return '1d';
-  }
-}
-
-function saveTrades(userId, trades) {
-  writeJSON(getTradesPath(userId), trades);
+function _getRSIData(rsiData) {
+  const signalRSI = typeof rsiData === 'number' ? rsiData : (rsiData?.signalRSI ?? rsiData);
+  const rsi = typeof rsiData === 'object' && rsiData !== null
+    ? { rsi15m: rsiData.rsi15m ?? null, rsi1h: rsiData.rsi1h ?? null, rsi4h: rsiData.rsi4h ?? null, rsi1d: rsiData.rsi1d ?? null, sma200: rsiData.sma200 ?? null, signalRSI }
+    : { signalRSI };
+  return { signalRSI, rsi };
 }
 
 /**
  * Open a simulated position (buy)
- * @param {string} userId
- * @param {string} symbol
- * @param {number} price
- * @param {object} rsiData - { rsi15m, rsi1h, rsi4h, rsi1d, sma200, signalRSI }
- * @param {number} amount
- * @param {string} timeframe - '15m'|'1h'|'4h'|'1d' (default '1d' for backwards compat)
+ * feePercent: trading fee % (e.g. 0.1 = 0.1%). Deducted from amount on entry.
  */
-function openPosition(userId, symbol, price, rsiData, amount = 100, timeframe = '1d') {
-  const trades = loadTrades(userId);
+function openPosition(userId, symbol, price, rsiData, amount = 100, timeframe = '1d', feePercent = 0) {
+  const db = getDb();
   const upper = symbol.toUpperCase();
 
-  // 1 position per (symbol, timeframe)
-  const existing = trades.positions.find(p => p.symbol === upper && (p.timeframe === timeframe || (!p.timeframe && timeframe === '1d')));
+  const existing = db.prepare('SELECT id FROM positions WHERE user_id = ? AND symbol = ? AND (timeframe = ? OR (timeframe IS NULL AND ? = \'1d\'))')
+    .get(userId, upper, timeframe, timeframe);
   if (existing) {
     return { success: false, message: `Ya tienes una posicion abierta en ${upper} (${timeframe})` };
   }
 
-  const signalRSI = typeof rsiData === 'number' ? rsiData : (rsiData?.signalRSI ?? rsiData);
+  const { signalRSI, rsi } = _getRSIData(rsiData);
+  const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
-  const rsi = typeof rsiData === 'object' && rsiData !== null
-    ? { rsi15m: rsiData.rsi15m ?? null, rsi1h: rsiData.rsi1h ?? null, rsi4h: rsiData.rsi4h ?? null, rsi1d: rsiData.rsi1d ?? null, sma200: rsiData.sma200 ?? null, signalRSI }
-    : { signalRSI };
+  const feeMultiplier = 1 - (feePercent / 100);
+  const effectiveAmount = amount * feeMultiplier;
+  const quantity = effectiveAmount / price;
 
-  const position = {
-    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-    symbol: upper,
-    timeframe,
-    entryPrice: price,
-    rsiAtOpen: signalRSI,
-    rsi,
-    amount,
-    quantity: amount / price,
-    openedAt: new Date().toISOString(),
+  db.prepare(`
+    INSERT INTO positions (id, user_id, symbol, timeframe, entry_price, amount, quantity, rsi_at_open, rsi_data, opened_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(id, userId, upper, timeframe, price, amount, quantity, signalRSI, JSON.stringify(rsi), new Date().toISOString());
+
+  return {
+    success: true,
+    position: {
+      id, symbol: upper, timeframe, entryPrice: price, rsiAtOpen: signalRSI, rsi,
+      amount, quantity, feePercent, openedAt: new Date().toISOString(),
+    },
   };
-
-  trades.positions.push(position);
-  saveTrades(userId, trades);
-  return { success: true, position };
 }
 
 /**
  * Close a simulated position (sell)
- * @param {string} userId
- * @param {string} symbol
- * @param {number} currentPrice
- * @param {object} rsiData - { rsi15m, rsi1h, rsi4h, rsi1d, sma200, signalRSI }
- * @param {string} timeframe - must match the open position's timeframe
+ * feePercent: trading fee % (e.g. 0.1 = 0.1%). Deducted from exit value.
  */
-function closePosition(userId, symbol, currentPrice, rsiData, timeframe = '1d') {
-  const trades = loadTrades(userId);
+function closePosition(userId, symbol, currentPrice, rsiData, timeframe = '1d', feePercent = 0) {
+  const db = getDb();
   const upper = symbol.toUpperCase();
 
-  const idx = trades.positions.findIndex(p => p.symbol === upper && p.timeframe === timeframe);
-  if (idx === -1) {
-    // Fallback: try finding by symbol only (backwards compat)
-    const legacyIdx = trades.positions.findIndex(p => p.symbol === upper && !p.timeframe);
-    if (legacyIdx === -1) {
-      return { success: false, message: `No hay posicion abierta en ${upper} (${timeframe})` };
-    }
-    return _closeAtIdx(trades, legacyIdx, userId, currentPrice, rsiData);
+  let row = db.prepare('SELECT * FROM positions WHERE user_id = ? AND symbol = ? AND timeframe = ?')
+    .get(userId, upper, timeframe);
+
+  if (!row) {
+    // Backwards compat: try finding by symbol only without timeframe
+    row = db.prepare('SELECT * FROM positions WHERE user_id = ? AND symbol = ? AND timeframe IS NULL')
+      .get(userId, upper);
   }
 
-  return _closeAtIdx(trades, idx, userId, currentPrice, rsiData);
-}
+  if (!row) {
+    return { success: false, message: `No hay posicion abierta en ${upper} (${timeframe})` };
+  }
 
-function _closeAtIdx(trades, idx, userId, currentPrice, rsiData) {
-  const position = trades.positions[idx];
-  const exitValue = position.quantity * currentPrice;
-  const pnl = exitValue - position.amount;
-  const pnlPct = (pnl / position.amount) * 100;
-
-  const signalRSI = typeof rsiData === 'number' ? rsiData : (rsiData?.signalRSI ?? rsiData);
-  const rsiAtClose = typeof rsiData === 'object' && rsiData !== null
-    ? { rsi15m: rsiData.rsi15m ?? null, rsi1h: rsiData.rsi1h ?? null, rsi4h: rsiData.rsi4h ?? null, rsi1d: rsiData.rsi1d ?? null, sma200: rsiData.sma200 ?? null, signalRSI }
-    : { signalRSI };
+  const { signalRSI, rsi: rsiClose } = _getRSIData(rsiData);
+  const feeMultiplier = 1 - (feePercent / 100);
+  const exitValue = row.quantity * currentPrice * feeMultiplier;
+  const pnl = exitValue - row.amount;
+  const pnlPct = (pnl / row.amount) * 100;
 
   const closedTrade = {
-    ...position,
+    id: row.id,
+    symbol: row.symbol,
+    timeframe: row.timeframe || '1d',
+    entryPrice: row.entry_price,
     exitPrice: currentPrice,
-    rsiAtClose: signalRSI,
-    rsiClose: rsiAtClose,
+    amount: row.amount,
+    quantity: row.quantity,
     exitValue,
     pnl,
     pnlPct,
+    feePercent,
+    rsiAtOpen: row.rsi_at_open,
+    rsiAtClose: signalRSI,
+    rsi: row.rsi_data ? JSON.parse(row.rsi_data) : null,
+    rsiClose,
+    openedAt: row.opened_at,
     closedAt: new Date().toISOString(),
   };
 
-  trades.history.push(closedTrade);
-  trades.positions.splice(idx, 1);
-  saveTrades(userId, trades);
+  const transaction = db.transaction(() => {
+    db.prepare('DELETE FROM positions WHERE id = ?').run(row.id);
+    db.prepare(`
+      INSERT INTO history (id, user_id, symbol, timeframe, entry_price, exit_price, amount, quantity, exit_value, pnl, pnl_pct, rsi_at_open, rsi_at_close, rsi_data, rsi_close_data, opened_at, closed_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      closedTrade.id, userId, closedTrade.symbol, closedTrade.timeframe,
+      closedTrade.entryPrice, closedTrade.exitPrice, closedTrade.amount, closedTrade.quantity,
+      closedTrade.exitValue, closedTrade.pnl, closedTrade.pnlPct,
+      closedTrade.rsiAtOpen, closedTrade.rsiAtClose,
+      row.rsi_data, JSON.stringify(rsiClose),
+      closedTrade.openedAt, closedTrade.closedAt
+    );
+  });
+  transaction();
 
   return { success: true, trade: closedTrade };
 }
 
 function getOpenPositions(userId) {
-  return loadTrades(userId).positions;
+  const db = getDb();
+  const rows = db.prepare('SELECT * FROM positions WHERE user_id = ?').all(userId);
+  return rows.map(_rowToPosition);
 }
 
 function getOpenPosition(userId, symbol, timeframe) {
-  const trades = loadTrades(userId);
+  const db = getDb();
   const upper = symbol.toUpperCase();
-  return trades.positions.find(p => p.symbol === upper && (p.timeframe === timeframe || (!p.timeframe && timeframe === '1d'))) || null;
+  const row = db.prepare('SELECT * FROM positions WHERE user_id = ? AND symbol = ? AND (timeframe = ? OR (timeframe IS NULL AND ? = \'1d\'))')
+    .get(userId, upper, timeframe, timeframe);
+  return row ? _rowToPosition(row) : null;
 }
 
 function hasOpenPosition(userId, symbol, timeframe) {
-  const trades = loadTrades(userId);
+  const db = getDb();
   const upper = symbol.toUpperCase();
   if (timeframe) {
-    return trades.positions.some(p => p.symbol === upper && (p.timeframe === timeframe || (!p.timeframe && timeframe === '1d')));
+    return !!db.prepare('SELECT id FROM positions WHERE user_id = ? AND symbol = ? AND (timeframe = ? OR (timeframe IS NULL AND ? = \'1d\'))')
+      .get(userId, upper, timeframe, timeframe);
   }
-  return trades.positions.some(p => p.symbol === upper);
+  return !!db.prepare('SELECT id FROM positions WHERE user_id = ? AND symbol = ?').get(userId, upper);
 }
 
 function getHistory(userId) {
-  return loadTrades(userId).history;
+  const db = getDb();
+  const rows = db.prepare('SELECT * FROM history WHERE user_id = ? ORDER BY closed_at DESC').all(userId);
+  return rows.map(_rowToHistory);
 }
 
-function getStats(userId) {
-  const history = loadTrades(userId).history;
+function getPaginatedHistory(userId, opts = {}) {
+  const db = getDb();
+  const { page = 1, limit = 20, symbol, timeframe, from, to, sort = 'closed_at', order = 'desc' } = opts;
+  const validLimit = Math.min(Math.max(parseInt(limit) || 20, 1), 100);
+  const validPage = Math.max(parseInt(page) || 1, 1);
+  const offset = (validPage - 1) * validLimit;
 
-  if (history.length === 0) {
+  const allowedSorts = ['closed_at', 'opened_at', 'symbol', 'pnl', 'pnl_pct'];
+  const sortCol = allowedSorts.includes(sort) ? sort : 'closed_at';
+  const sortOrder = order.toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+
+  const conditions = ['user_id = ?'];
+  const params = [userId];
+
+  if (symbol) { conditions.push('symbol = ?'); params.push(symbol.toUpperCase()); }
+  if (timeframe) { conditions.push('timeframe = ?'); params.push(timeframe); }
+  if (from) { conditions.push('closed_at >= ?'); params.push(from); }
+  if (to) { conditions.push('closed_at <= ?'); params.push(to + 'T23:59:59'); }
+
+  const where = 'WHERE ' + conditions.join(' AND ');
+
+  const countRow = db.prepare(`SELECT COUNT(*) as total FROM history ${where}`).get(...params);
+  const total = countRow.total;
+
+  const rows = db.prepare(`SELECT * FROM history ${where} ORDER BY ${sortCol} ${sortOrder} LIMIT ? OFFSET ?`).all(...params, validLimit, offset);
+  const trades = rows.map(_rowToHistory);
+
+  const filteredStats = db.prepare(`SELECT
+    COALESCE(SUM(pnl), 0) as filteredPnl,
+    COUNT(*) as filteredTrades,
+    SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) as filteredWins
+    FROM history ${where}`).get(...params);
+
+  return {
+    trades,
+    pagination: { page: validPage, limit: validLimit, total, totalPages: Math.ceil(total / validLimit) },
+    stats: { filteredPnl: filteredStats.filteredPnl, filteredTrades: filteredStats.filteredTrades, filteredWins: filteredStats.filteredWins },
+  };
+}
+
+function getStats(userId, opts = {}) {
+  const db = getDb();
+
+  const conditions = ['user_id = ?'];
+  const params = [userId];
+  if (opts.from) { conditions.push('closed_at >= ?'); params.push(opts.from); }
+  if (opts.to) { conditions.push('closed_at <= ?'); params.push(opts.to + 'T23:59:59'); }
+  const where = 'WHERE ' + conditions.join(' AND ');
+
+  const row = db.prepare(`
+    SELECT
+      COUNT(*) as totalTrades,
+      SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) as wins,
+      SUM(CASE WHEN pnl <= 0 THEN 1 ELSE 0 END) as losses,
+      COALESCE(SUM(pnl), 0) as totalPnl,
+      COALESCE(AVG(pnl_pct), 0) as avgPnlPct
+    FROM history ${where}
+  `).get(...params);
+
+  if (!row || row.totalTrades === 0) {
     return {
       totalTrades: 0, wins: 0, losses: 0, winRate: 0,
       totalPnl: 0, avgPnlPct: 0, bestTrade: null, worstTrade: null,
     };
   }
 
-  const wins = history.filter(t => t.pnl > 0);
-  const losses = history.filter(t => t.pnl <= 0);
-  const totalPnl = history.reduce((s, t) => s + t.pnl, 0);
-  const avgPnlPct = history.reduce((s, t) => s + t.pnlPct, 0) / history.length;
-  const sorted = [...history].sort((a, b) => b.pnl - a.pnl);
+  const best = db.prepare(`SELECT * FROM history ${where} ORDER BY pnl DESC LIMIT 1`).get(...params);
+  const worst = db.prepare(`SELECT * FROM history ${where} ORDER BY pnl ASC LIMIT 1`).get(...params);
 
   return {
-    totalTrades: history.length,
-    wins: wins.length,
-    losses: losses.length,
-    winRate: (wins.length / history.length) * 100,
-    totalPnl,
-    avgPnlPct,
-    bestTrade: sorted[0],
-    worstTrade: sorted[sorted.length - 1],
+    totalTrades: row.totalTrades,
+    wins: row.wins,
+    losses: row.losses,
+    winRate: (row.wins / row.totalTrades) * 100,
+    totalPnl: row.totalPnl,
+    avgPnlPct: row.avgPnlPct,
+    bestTrade: best ? _rowToHistory(best) : null,
+    worstTrade: worst ? _rowToHistory(worst) : null,
   };
 }
 
-module.exports = { openPosition, closePosition, getOpenPositions, getOpenPosition, hasOpenPosition, getHistory, getStats };
+function _rowToPosition(row) {
+  return {
+    id: row.id,
+    symbol: row.symbol,
+    timeframe: row.timeframe || '1d',
+    entryPrice: row.entry_price,
+    rsiAtOpen: row.rsi_at_open,
+    rsi: row.rsi_data ? JSON.parse(row.rsi_data) : null,
+    amount: row.amount,
+    quantity: row.quantity,
+    openedAt: row.opened_at,
+  };
+}
+
+function _rowToHistory(row) {
+  return {
+    id: row.id,
+    symbol: row.symbol,
+    timeframe: row.timeframe || '1d',
+    entryPrice: row.entry_price,
+    exitPrice: row.exit_price,
+    amount: row.amount,
+    quantity: row.quantity,
+    exitValue: row.exit_value,
+    pnl: row.pnl,
+    pnlPct: row.pnl_pct,
+    rsiAtOpen: row.rsi_at_open,
+    rsiAtClose: row.rsi_at_close,
+    rsi: row.rsi_data ? JSON.parse(row.rsi_data) : null,
+    rsiClose: row.rsi_close_data ? JSON.parse(row.rsi_close_data) : null,
+    openedAt: row.opened_at,
+    closedAt: row.closed_at,
+  };
+}
+
+module.exports = { openPosition, closePosition, getOpenPositions, getOpenPosition, hasOpenPosition, getHistory, getPaginatedHistory, getStats };

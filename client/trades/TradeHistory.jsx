@@ -2,19 +2,37 @@ import { useState, useEffect } from 'react';
 import { useAuthAPI, getAuthHeaders } from '../hooks/useAPI';
 import Loading from '../components/Loading';
 import { formatPrice } from '../dashboard/TokenCard';
+import { useToast } from '../hooks/useToast';
+import SortableTable from '../components/SortableTable';
 
 export default function TradeHistory({ refreshTrigger, user }) {
   const [data, setData] = useState(null);
+  const { addToast } = useToast();
   const [filter, setFilter] = useState('ALL');
   const [tfFilter, setTfFilter] = useState('ALL');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(20);
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+
+  function buildUrl() {
+    const params = new URLSearchParams();
+    params.set('page', page);
+    params.set('limit', perPage);
+    if (filter !== 'ALL') params.set('symbol', filter);
+    if (tfFilter !== 'ALL') params.set('timeframe', tfFilter);
+    if (dateFrom) params.set('from', dateFrom);
+    if (dateTo) params.set('to', dateTo);
+    return `/api/trade/auto-stats?${params}`;
+  }
 
   async function load() {
     setLoading(true);
     setError(null);
     try {
-      const res = await useAuthAPI('/api/trade/auto-stats');
+      const res = await useAuthAPI(buildUrl());
       setData(res);
     } catch (e) {
       setError(e.message);
@@ -23,26 +41,41 @@ export default function TradeHistory({ refreshTrigger, user }) {
     }
   }
 
+  function setDatePreset(preset) {
+    const now = new Date();
+    let from = '';
+    switch (preset) {
+      case 'today': from = now.toISOString().split('T')[0]; break;
+      case 'week': { const d = new Date(now); d.setDate(d.getDate() - d.getDay()); from = d.toISOString().split('T')[0]; break; }
+      case 'month': from = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`; break;
+      case '3months': { const d = new Date(now); d.setMonth(d.getMonth() - 3); from = d.toISOString().split('T')[0]; break; }
+      case 'all': from = ''; setDateFrom(''); setDateTo(''); break;
+    }
+    if (preset !== 'all') setDateFrom(from);
+    setPage(1);
+  }
+
   async function resetSimulator() {
     if (!confirm('Resetear todas las operaciones del simulador? Esta accion no se puede deshacer.')) return;
     try {
       const res = await fetch('/api/trade/auto-reset', { method: 'DELETE', headers: getAuthHeaders() });
       const data = await res.json();
-      if (data.success) { setFilter('ALL'); setTfFilter('ALL'); load(); }
-      else alert(data.error || 'Error al resetear');
-    } catch (e) { alert('Error: ' + e.message); }
+      if (data.success) { setFilter('ALL'); setTfFilter('ALL'); setDateFrom(''); setDateTo(''); setPage(1); load(); addToast('success', 'Simulador reseteado'); }
+      else addToast('error', data.error || 'Error al resetear');
+    } catch (e) { addToast('error', e.message); }
   }
 
   const isSupremeAdmin = user?.id === 'admin_001' || user?.username === 'admin';
 
   useEffect(() => { load(); }, []);
   useEffect(() => { if (refreshTrigger > 0) load(); }, [refreshTrigger]);
+  useEffect(() => { if (refreshTrigger > 0) load(); }, [refreshTrigger]);
 
   if (loading && !data) return <Loading text="Cargando simulador..." />;
   if (error && !data) return <div className="history-empty">Error: {error}</div>;
   if (!data) return null;
 
-  const { overall, perToken, history, positions } = data;
+  const { overall, perToken, history, positions, pagination, filterStats } = data;
 
   const symbols = [...new Set([
     ...Object.keys(perToken || {}),
@@ -53,19 +86,12 @@ export default function TradeHistory({ refreshTrigger, user }) {
     ...history.map(t => t.timeframe).filter(Boolean),
   ])];
 
-  const applyFilters = (items) => {
-    let filtered = items;
-    if (filter !== 'ALL') filtered = filtered.filter(t => t.symbol === filter);
-    if (tfFilter !== 'ALL') filtered = filtered.filter(t => t.timeframe === tfFilter);
-    return filtered;
-  };
-
-  const filteredHistory = applyFilters(history);
-  const filteredPositions = applyFilters(positions);
-
-  const filteredPnl = filteredHistory.reduce((s, t) => s + t.pnl, 0);
-  const filteredTrades = filteredHistory.length;
-  const filteredWins = filteredHistory.filter(t => t.pnl > 0).length;
+  const filteredPositions = positions || [];
+  const pag = pagination || { page: 1, limit: 20, total: history.length, totalPages: 1 };
+  const fStats = filterStats || { filteredPnl: 0, filteredTrades: 0, filteredWins: 0 };
+  const filteredPnl = fStats.filteredPnl;
+  const filteredTrades = fStats.filteredTrades;
+  const filteredWins = fStats.filteredWins;
 
   return (
     <div>
@@ -94,39 +120,23 @@ export default function TradeHistory({ refreshTrigger, user }) {
       {filteredPositions.length > 0 && (
         <div className="market-section" style={{ marginBottom: '1.5rem' }}>
           <h3 className="section-title">Posiciones Abiertas</h3>
-          <div style={{ overflowX: 'auto', marginTop: '0.75rem' }}>
-            <table style={tableStyle}>
-              <thead>
-                <tr>
-                  <th style={thStyle}>Token</th>
-                  <th style={thStyle}>TF</th>
-                  <th style={thStyle}>Entrada</th>
-                  <th style={thStyle}>Precio Compra</th>
-                  <th style={thStyle}>Precio Actual</th>
-                  <th style={thStyle}>Inversion</th>
-                  <th style={thStyle}>RSI (Compra)</th>
-                  <th style={thStyle}>SMA 200</th>
-                  <th style={thStyle}>P&L</th>
-                  <th style={thStyle}>P&L %</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredPositions.map(pos => (
-                  <tr key={pos.id}>
-                    <td style={tdStyle}><strong>{pos.symbol}</strong></td>
-                    <td style={tdStyle}><TfBadge tf={pos.timeframe} /></td>
-                    <td style={tdStyle}>{formatDate(pos.openedAt)}</td>
-                    <td style={tdStyle}>{formatPrice(pos.entryPrice)}</td>
-                    <td style={tdStyle}>{pos.currentPrice ? formatPrice(pos.currentPrice) : '-'}</td>
-                    <td style={tdStyle}>${pos.amount?.toFixed(2)}</td>
-                    <td style={tdStyle}>{formatRSISummary(pos.rsi)}</td>
-                    <td style={tdStyle}>{pos.rsi?.sma200 != null ? formatPrice(pos.rsi.sma200) : '-'}</td>
-                    <td style={{ ...tdStyle, color: pos.pnl >= 0 ? 'var(--green)' : 'var(--red)' }}>{formatPnl(pos.pnl)}</td>
-                    <td style={{ ...tdStyle, color: pos.pnlPct >= 0 ? 'var(--green)' : 'var(--red)' }}>{pos.pnlPct?.toFixed(2)}%</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div style={{ marginTop: '0.75rem' }}>
+            <SortableTable
+              columns={[
+                { key: 'symbol', label: 'Token', render: v => <strong>{v}</strong> },
+                { key: 'timeframe', label: 'TF', render: v => <TfBadge tf={v} /> },
+                { key: 'openedAt', label: 'Entrada', render: v => formatDate(v) },
+                { key: 'entryPrice', label: 'P. Compra', render: v => formatPrice(v) },
+                { key: 'currentPrice', label: 'P. Actual', render: v => v ? formatPrice(v) : '-' },
+                { key: 'amount', label: 'Inversion', render: v => `$${v?.toFixed(2)}` },
+                { key: 'rsi', label: 'RSI (Compra)', render: v => formatRSISummary(v) },
+                { key: 'sma200', label: 'SMA 200', render: (_, row) => row.rsi?.sma200 != null ? formatPrice(row.rsi.sma200) : '-' },
+                { key: 'pnl', label: 'P&L ($)', render: v => <span style={{ color: v >= 0 ? 'var(--green)' : 'var(--red)' }}>{formatPnl(v)}</span> },
+                { key: 'pnlPct', label: 'P&L (%)', render: v => <span style={{ color: v >= 0 ? 'var(--green)' : 'var(--red)' }}>{v?.toFixed(2)}%</span> },
+              ]}
+              data={filteredPositions}
+              emptyText="Sin posiciones abiertas"
+            />
           </div>
         </div>
       )}
@@ -136,19 +146,23 @@ export default function TradeHistory({ refreshTrigger, user }) {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
           <h3 className="section-title" style={{ marginBottom: 0 }}>Historial de Operaciones</h3>
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>Filtrar:</span>
-            <select value={filter} onChange={e => setFilter(e.target.value)} style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem' }}>
+            <select value={filter} onChange={e => { setFilter(e.target.value); setPage(1); }} style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem' }}>
               <option value="ALL">Todos</option>
               {symbols.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
-            <select value={tfFilter} onChange={e => setTfFilter(e.target.value)} style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem' }}>
+            <select value={tfFilter} onChange={e => { setTfFilter(e.target.value); setPage(1); }} style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem' }}>
               <option value="ALL">Todos TF</option>
               {timeframes.map(tf => <option key={tf} value={tf}>{tf}</option>)}
             </select>
+            <select value={perPage} onChange={e => { setPerPage(Number(e.target.value)); setPage(1); }} style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem' }}>
+              <option value={20}>20/page</option>
+              <option value={50}>50/page</option>
+              <option value={100}>100/page</option>
+            </select>
             <button className="btn btn-secondary btn-sm" onClick={load} disabled={loading}>Actualizar</button>
-            {filteredHistory.length > 0 && <>
-              <button className="btn btn-secondary btn-sm" onClick={() => exportCSV(filteredHistory)}>Exportar CSV</button>
-              <button className="btn btn-secondary btn-sm" onClick={() => exportExcel(filteredHistory)}>Exportar Excel</button>
+            {history.length > 0 && <>
+              <button className="btn btn-secondary btn-sm" onClick={() => exportCSV(history)}>CSV</button>
+              <button className="btn btn-secondary btn-sm" onClick={() => exportExcel(history)}>Excel</button>
             </>}
             {isSupremeAdmin && (
               <button className="btn btn-sm" onClick={resetSimulator} disabled={loading}
@@ -159,7 +173,23 @@ export default function TradeHistory({ refreshTrigger, user }) {
           </div>
         </div>
 
-        {(filter !== 'ALL' || tfFilter !== 'ALL') && (
+        {/* Date filters */}
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>Fecha:</span>
+          <input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPage(1); }}
+            style={{ padding: '0.3rem 0.5rem', fontSize: '0.8rem' }} />
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>a</span>
+          <input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setPage(1); }}
+            style={{ padding: '0.3rem 0.5rem', fontSize: '0.8rem' }} />
+          {['today', 'week', 'month', '3months', 'all'].map(p => (
+            <button key={p} className="btn btn-sm" onClick={() => setDatePreset(p)}
+              style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', background: 'var(--surface2)', color: 'var(--text-dim)', border: 'none', borderRadius: 4 }}>
+              {{ today: 'Hoy', week: 'Semana', month: 'Mes', '3months': '3 Meses', all: 'Todo' }[p]}
+            </button>
+          ))}
+        </div>
+
+        {(filter !== 'ALL' || tfFilter !== 'ALL' || dateFrom || dateTo) && (
           <div style={{ fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: '0.75rem' }}>
             {filter !== 'ALL' && `${filter}: `}
             {tfFilter !== 'ALL' && `TF ${tfFilter} | `}
@@ -167,49 +197,45 @@ export default function TradeHistory({ refreshTrigger, user }) {
           </div>
         )}
 
-        {filteredHistory.length === 0 ? (
-          <div className="history-empty">Sin operaciones cerradas{(filter !== 'ALL' || tfFilter !== 'ALL') ? ` para este filtro` : ''}.</div>
+        {history.length === 0 ? (
+          <div className="history-empty">Sin operaciones cerradas{(filter !== 'ALL' || tfFilter !== 'ALL' || dateFrom || dateTo) ? ` para este filtro` : ''}.</div>
         ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={tableStyle}>
-              <thead>
-                <tr>
-                  <th style={thStyle}>Token</th>
-                  <th style={thStyle}>TF</th>
-                  <th style={thStyle}>Apertura</th>
-                  <th style={thStyle}>Cierre</th>
-                  <th style={thStyle}>Duracion</th>
-                  <th style={thStyle}>P. Compra</th>
-                  <th style={thStyle}>P. Venta</th>
-                  <th style={thStyle}>Inversion</th>
-                  <th style={thStyle}>RSI (Compra)</th>
-                  <th style={thStyle}>RSI (Venta)</th>
-                  <th style={thStyle}>SMA 200</th>
-                  <th style={thStyle}>P&L ($)</th>
-                  <th style={thStyle}>P&L (%)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {[...filteredHistory].reverse().map((t, i) => (
-                  <tr key={i}>
-                    <td style={tdStyle}><strong>{t.symbol}</strong></td>
-                    <td style={tdStyle}><TfBadge tf={t.timeframe} /></td>
-                    <td style={tdStyle}>{formatDate(t.openedAt)}</td>
-                    <td style={tdStyle}>{formatDate(t.closedAt)}</td>
-                    <td style={tdStyle}>{formatDuration(t.openedAt, t.closedAt)}</td>
-                    <td style={tdStyle}>{formatPrice(t.entryPrice)}</td>
-                    <td style={tdStyle}>{formatPrice(t.exitPrice)}</td>
-                    <td style={tdStyle}>${t.amount?.toFixed(2)}</td>
-                    <td style={tdStyle}>{formatRSISummary(t.rsi)}</td>
-                    <td style={tdStyle}>{formatRSISummary(t.rsiClose)}</td>
-                    <td style={tdStyle}>{t.rsi?.sma200 != null ? formatPrice(t.rsi.sma200) : '-'}</td>
-                    <td style={{ ...tdStyle, color: t.pnl >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 600 }}>{formatPnl(t.pnl)}</td>
-                    <td style={{ ...tdStyle, color: t.pnlPct >= 0 ? 'var(--green)' : 'var(--red)' }}>{t.pnlPct?.toFixed(2)}%</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <>
+            <SortableTable
+              columns={[
+                { key: 'symbol', label: 'Token', render: v => <strong>{v}</strong> },
+                { key: 'timeframe', label: 'TF', render: v => <TfBadge tf={v} /> },
+                { key: 'openedAt', label: 'Apertura', render: v => formatDate(v) },
+                { key: 'closedAt', label: 'Cierre', render: v => formatDate(v) },
+                { key: 'duration', label: 'Duracion', render: (_, row) => formatDuration(row.openedAt, row.closedAt) },
+                { key: 'entryPrice', label: 'P. Compra', render: v => formatPrice(v) },
+                { key: 'exitPrice', label: 'P. Venta', render: v => formatPrice(v) },
+                { key: 'amount', label: 'Inversion', render: v => `$${v?.toFixed(2)}` },
+                { key: 'rsi', label: 'RSI (Compra)', render: v => formatRSISummary(v) },
+                { key: 'rsiClose', label: 'RSI (Venta)', render: v => formatRSISummary(v) },
+                { key: 'sma200', label: 'SMA 200', render: (_, row) => row.rsi?.sma200 != null ? formatPrice(row.rsi.sma200) : '-' },
+                { key: 'pnl', label: 'P&L ($)', render: v => <span style={{ color: v >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 600 }}>{formatPnl(v)}</span> },
+                { key: 'pnlPct', label: 'P&L (%)', render: v => <span style={{ color: v >= 0 ? 'var(--green)' : 'var(--red)' }}>{v?.toFixed(2)}%</span> },
+              ]}
+              data={[...history].reverse()}
+              emptyText="Sin operaciones cerradas"
+            />
+
+            {/* Pagination */}
+            {pag.totalPages > 1 && (
+              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.75rem', marginTop: '1rem', fontSize: '0.85rem' }}>
+                <button className="btn btn-sm btn-secondary" disabled={pag.page <= 1} onClick={() => { setPage(pag.page - 1); load(); }}>
+                  &larr; Anterior
+                </button>
+                <span style={{ color: 'var(--text-dim)' }}>
+                  Pag {pag.page} de {pag.totalPages} ({pag.total} ops)
+                </span>
+                <button className="btn btn-sm btn-secondary" disabled={pag.page >= pag.totalPages} onClick={() => { setPage(pag.page + 1); load(); }}>
+                  Siguiente &rarr;
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
@@ -367,7 +393,3 @@ function formatDuration(from, to) {
   if (hours > 0) return `${hours}h ${Math.floor((ms % 3600000) / 60000)}m`;
   return `${Math.floor(ms / 60000)}m`;
 }
-
-const tableStyle = { width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' };
-const thStyle = { textAlign: 'left', padding: '0.5rem 0.75rem', borderBottom: '2px solid var(--surface2)', color: 'var(--text-dim)', fontWeight: 500, fontSize: '0.7rem', textTransform: 'uppercase', whiteSpace: 'nowrap' };
-const tdStyle = { padding: '0.5rem 0.75rem', borderBottom: '1px solid var(--surface2)', whiteSpace: 'nowrap' };

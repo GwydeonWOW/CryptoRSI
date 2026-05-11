@@ -15,20 +15,23 @@ export default function Header({ onRefresh, refreshing, lastUpdated, user, onLog
         alignItems: 'center',
         justifyContent: 'space-between',
         flexWrap: 'wrap',
-        gap: '1rem',
+        gap: '0.75rem',
       }}>
-        <h1 style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--blue)' }}>
-          CryptoRSI <span style={{ color: 'var(--text-dim)', fontWeight: 400, fontSize: '0.9rem' }}>Seguimiento RSI Personal</span>
-        </h1>
-        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <h1 style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--blue)', whiteSpace: 'nowrap' }}>
+            CryptoRSI
+          </h1>
+          <span className="header-subtitle" style={{ color: 'var(--text-dim)', fontWeight: 400, fontSize: '0.9rem' }}>Seguimiento RSI</span>
+        </div>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
           <BtcWidget />
           {lastUpdated && (
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>
-              Ultima actualizacion: {lastUpdated.toLocaleString('es-ES')}
+            <span className="header-time" style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>
+              {lastUpdated.toLocaleString('es-ES')}
             </span>
           )}
-          <button className="btn btn-secondary" onClick={onRefresh} disabled={refreshing}>
-            {refreshing ? 'Actualizando...' : 'Actualizar'}
+          <button className="btn btn-secondary btn-sm" onClick={onRefresh} disabled={refreshing}>
+            {refreshing ? '...' : 'Actualizar'}
           </button>
           {user && (
             <>
@@ -72,7 +75,7 @@ function BtcWidget() {
   if (price === null) return null;
 
   return (
-    <div style={{
+    <div className="btc-widget" style={{
       display: 'flex', alignItems: 'center', gap: 8,
       padding: '0.3rem 0.7rem', borderRadius: 8,
       background: 'rgba(247,147,26,0.08)', border: '1px solid rgba(247,147,26,0.2)',

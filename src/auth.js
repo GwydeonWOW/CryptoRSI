@@ -71,6 +71,13 @@ function adminMiddleware(req, res, next) {
   next();
 }
 
+function moderatorMiddleware(req, res, next) {
+  if (!req.user || !['admin', 'moderator'].includes(req.user.role)) {
+    return res.status(403).json({ error: 'Acceso restringido' });
+  }
+  next();
+}
+
 module.exports = {
   hashPassword,
   verifyPassword,
@@ -78,4 +85,5 @@ module.exports = {
   verifyToken,
   authMiddleware,
   adminMiddleware,
+  moderatorMiddleware,
 };

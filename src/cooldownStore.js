@@ -1,30 +1,18 @@
-const { getDataDir, readJSON, writeJSON } = require('./storage');
-const path = require('path');
+/**
+ * Cooldown Store — SQLite-backed alert cooldown tracking
+ */
 
-const FILE = path.join(getDataDir(), 'sent_signals.json');
-let signals = {};
-
-function load() {
-  signals = readJSON(FILE, {});
-  const now = Date.now();
-  for (const key of Object.keys(signals)) {
-    if (typeof signals[key] !== 'number') delete signals[key];
-  }
-}
+const { getDb } = require('./db');
 
 function get(key) {
-  return signals[key] || null;
+  const db = getDb();
+  const row = db.prepare('SELECT timestamp FROM cooldowns WHERE key = ?').get(key);
+  return row ? row.timestamp : null;
 }
 
 function set(key, timestamp) {
-  signals[key] = timestamp;
-  save();
+  const db = getDb();
+  db.prepare('INSERT OR REPLACE INTO cooldowns (key, timestamp) VALUES (?, ?)').run(key, timestamp);
 }
-
-function save() {
-  writeJSON(FILE, signals);
-}
-
-load();
 
 module.exports = { get, set };

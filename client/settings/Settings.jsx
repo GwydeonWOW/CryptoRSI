@@ -28,7 +28,7 @@ export default function Settings() {
     <div>
       {msg && <MsgBanner msg={msg} onDismiss={() => setMsg(null)} />}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
         <TelegramSection settings={settings} onUpdate={load} onMsg={setMsg} />
         <DiscordSection settings={settings} onUpdate={load} onMsg={setMsg} />
       </div>
@@ -66,7 +66,7 @@ function Section({ title, children }) {
 
 function Row({ label, children }) {
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+    <div className="settings-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
       <label style={{ fontSize: '0.85rem', color: 'var(--text-dim)' }}>{label}</label>
       {children}
     </div>
@@ -425,6 +425,7 @@ function SimulationSection({ settings, onUpdate, onMsg }) {
   const sim = settings.simulation || {};
   const [enabled, setEnabled] = useState(sim.enabled ?? true);
   const [amount, setAmount] = useState(sim.amount || 1000);
+  const [feePercent, setFeePercent] = useState(sim.feePercent || 0);
   const [tfConfigs, setTfConfigs] = useState(
     sim.timeframes || {
       '15m': { enabled: false, rsiOversold: 30, rsiOverbought: 70 },
@@ -439,6 +440,7 @@ function SimulationSection({ settings, onUpdate, onMsg }) {
     const s = settings.simulation || {};
     setEnabled(s.enabled ?? true);
     setAmount(s.amount || 1000);
+    setFeePercent(s.feePercent || 0);
     setTfConfigs(s.timeframes || tfConfigs);
   }, [settings]);
 
@@ -452,7 +454,7 @@ function SimulationSection({ settings, onUpdate, onMsg }) {
       const res = await fetch('/api/settings/simulation', {
         method: 'PUT',
         headers: getAuthHeaders(),
-        body: JSON.stringify({ enabled, amount, timeframes: tfConfigs }),
+        body: JSON.stringify({ enabled, amount, feePercent, timeframes: tfConfigs }),
       });
       const data = await res.json();
       if (data.success) { onMsg({ type: 'ok', text: 'Simulacion guardada' }); onUpdate(); }
@@ -471,6 +473,10 @@ function SimulationSection({ settings, onUpdate, onMsg }) {
       <Row label="Monto por operacion ($)">
         <input type="number" value={amount} onChange={e => setAmount(Number(e.target.value))}
           min={100} step={100} style={{ width: 120 }} />
+      </Row>
+      <Row label={`Fee por operacion (${feePercent}%)`}>
+        <input type="range" min="0" max="1" step="0.01" value={feePercent}
+          onChange={e => setFeePercent(parseFloat(e.target.value))} style={{ width: 150 }} />
       </Row>
 
       <div style={{ marginTop: '1rem' }}>

@@ -1,14 +1,16 @@
 import { useState } from 'react';
 import { getAuthHeaders } from '../hooks/useAPI';
+import { useToast } from '../hooks/useToast';
 
 export default function AddTokenModal({ open, onClose, onAdded }) {
   const [symbol, setSymbol] = useState('');
   const [name, setName] = useState('');
+  const { addToast } = useToast();
 
   if (!open) return null;
 
   async function add() {
-    if (!symbol.trim()) { alert('Introduce un simbolo'); return; }
+    if (!symbol.trim()) { addToast('warning', 'Introduce un simbolo'); return; }
     try {
       const res = await fetch('/api/tokens', {
         method: 'POST',
@@ -16,9 +18,9 @@ export default function AddTokenModal({ open, onClose, onAdded }) {
         body: JSON.stringify({ symbol: symbol.trim(), name: name.trim() }),
       });
       const data = await res.json();
-      if (data.success) { setSymbol(''); setName(''); onClose(); onAdded(); }
-      else { alert(data.message); }
-    } catch (e) { alert('Error: ' + e.message); }
+      if (data.success) { setSymbol(''); setName(''); onClose(); onAdded(); addToast('success', `${symbol.trim()} anadido`); }
+      else { addToast('error', data.message); }
+    } catch (e) { addToast('error', e.message); }
   }
 
   return (

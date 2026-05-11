@@ -1,11 +1,8 @@
 /**
- * Settings Store - Persistent configuration for notifications, alerts, and simulation
+ * Settings Store — SQLite-backed persistent configuration
  */
 
-const path = require('path');
-const { getDataDir, ensureDataDir, readJSON, writeJSON } = require('./storage');
-
-const SETTINGS_PATH = path.join(getDataDir(), 'settings.json');
+const { getDb } = require('./db');
 
 const DEFAULT_SIM_TF = { enabled: false, rsiOversold: 30, rsiOverbought: 70 };
 
@@ -34,6 +31,7 @@ const DEFAULT_SETTINGS = {
   simulation: {
     enabled: true,
     amount: 1000,
+    feePercent: 0,
     timeframes: {
       '15m': { ...DEFAULT_SIM_TF },
       '1h':  { ...DEFAULT_SIM_TF, enabled: true },
@@ -66,23 +64,30 @@ function _mergeWithDefaults(settings) {
     simulation: {
       enabled: settings.simulation?.enabled ?? DEFAULT_SETTINGS.simulation.enabled,
       amount: settings.simulation?.amount ?? DEFAULT_SETTINGS.simulation.amount,
+      feePercent: settings.simulation?.feePercent ?? DEFAULT_SETTINGS.simulation.feePercent,
       timeframes: _mergeSimTimeframes(settings.simulation?.timeframes),
     },
   };
 }
 
 function _readRaw() {
-  ensureDataDir();
-  return readJSON(SETTINGS_PATH, null);
+  const db = getDb();
+  const row = db.prepare('SELECT value FROM settings WHERE key = ?').get('main');
+  return row ? JSON.parse(row.value) : null;
+}
+
+function _writeRaw(settings) {
+  const db = getDb();
+  db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run('main', JSON.stringify(settings));
 }
 
 function loadSettings() {
-  const settings = _readRaw();
-  if (!settings) {
-    writeJSON(SETTINGS_PATH, DEFAULT_SETTINGS);
+  const raw = _readRaw();
+  if (!raw) {
+    _writeRaw(DEFAULT_SETTINGS);
     return { ...DEFAULT_SETTINGS };
   }
-  return _mergeWithDefaults(settings);
+  return _mergeWithDefaults(raw);
 }
 
 function saveSettings(updates) {
@@ -104,7 +109,7 @@ function saveSettings(updates) {
       }),
     },
   };
-  writeJSON(SETTINGS_PATH, merged);
+  _writeRaw(merged);
   return merged;
 }
 
@@ -118,14 +123,14 @@ function getAlertConfig(symbol) {
 function setTokenAlerts(symbol, config) {
   const settings = loadSettings();
   settings.alerts.tokens[symbol.toUpperCase()] = config;
-  writeJSON(SETTINGS_PATH, settings);
+  _writeRaw(settings);
   return settings;
 }
 
 function removeTokenAlerts(symbol) {
   const settings = loadSettings();
   delete settings.alerts.tokens[symbol.toUpperCase()];
-  writeJSON(SETTINGS_PATH, settings);
+  _writeRaw(settings);
   return settings;
 }
 
@@ -158,12 +163,6 @@ function getMaskedSettings() {
 }
 
 module.exports = {
-  loadSettings,
-  saveSettings,
-  getAlertConfig,
-  setTokenAlerts,
-  removeTokenAlerts,
-  getMaskedSettings,
-  getSimulationConfig,
-  saveSimulationConfig,
+  loadSettings, saveSettings, getAlertConfig, setTokenAlerts,
+  removeTokenAlerts, getMaskedSettings, getSimulationConfig, saveSimulationConfig,
 };

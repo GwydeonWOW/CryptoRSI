@@ -1,81 +1,46 @@
 /**
- * Centralized Persistent Storage
+ * Storage Module — SQLite-backed data persistence
  *
- * All data files are stored in a single configurable directory (DATA_DIR).
- * In Coolify/Docker, mount a persistent volume to /app/data.
- *
- * DATA_DIR can be set via env var, defaults to ./data
- *
- * Files:
- *   tokens.json     - tracked tokens list
- *   trades.json     - simulated positions & history
- *   history/
- *     rsi_<date>.json       - daily RSI snapshots for all tokens
- *     market_<date>.json    - daily market sentiment snapshots
- *     prices_<date>.json    - hourly price snapshots
+ * Replaces the old JSON file-based storage with SQLite.
+ * Provides RSI, market, and price history storage with query capabilities.
  */
 
-const fs = require('fs');
 const path = require('path');
+const { getDb, getDataDir, ensureDataDir } = require('./db');
 
-const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
+module.exports = { getDataDir, ensureDataDir, readJSON, writeJSON, saveRSISnapshot, getRSIHistory, saveMarketSnapshot, getMarketHistory, savePriceSnapshot, getPriceHistory, cleanupOldData };
 
-function getDataDir() {
-  return DATA_DIR;
-}
-
-function ensureDir(dir) {
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-}
-
-function ensureDataDir() {
-  ensureDir(DATA_DIR);
-}
-
-function ensureHistoryDir() {
-  ensureDir(path.join(DATA_DIR, 'history'));
-}
-
-// ============================================================
-// Generic JSON read/write
-// ============================================================
-
+// Legacy compatibility — used only during migration or fallback
 function readJSON(filepath, defaultValue) {
   try {
+    const fs = require('fs');
     if (fs.existsSync(filepath)) {
       return JSON.parse(fs.readFileSync(filepath, 'utf8'));
     }
   } catch (e) {
-    console.error(`Error reading ${filepath}:`, e.message);
+    console.error(`Error reading ${filepath}: ${e.message}`);
   }
   return defaultValue;
 }
 
 function writeJSON(filepath, data) {
-  ensureDir(path.dirname(filepath));
+  const fs = require('fs');
+  const dir = path.dirname(filepath);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
   fs.writeFileSync(filepath, JSON.stringify(data, null, 2));
 }
 
 // ============================================================
-// RSI History - snapshot per day
+// RSI History
 // ============================================================
 
-/**
- * Save a snapshot of RSI data for all tokens.
- * Called periodically by the scheduler.
- */
 function saveRSISnapshot(rsiDataArray) {
-  ensureHistoryDir();
-  const date = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-  const filepath = path.join(DATA_DIR, 'history', `rsi_${date}.json`);
-
-  let snapshots = readJSON(filepath, []);
-
-  snapshots.push({
-    timestamp: new Date().toISOString(),
-    tokens: rsiDataArray.map(t => ({
+  const db = getDb();
+  db.prepare('INSERT INTO rsi_snapshots (timestamp, token_data) VALUES (?, ?)').run(
+    new Date().toISOString(),
+    JSON.stringify(rsiDataArray.map(t => ({
       symbol: t.symbol,
       price: t.price || null,
       rsi15m: t.timeframes?.['15m']?.rsi ?? null,
@@ -83,208 +48,120 @@ function saveRSISnapshot(rsiDataArray) {
       rsi4h: t.timeframes?.['4h']?.rsi ?? null,
       rsi1d: t.timeframes?.['1d']?.rsi ?? null,
       action: t.recommendation?.action || null,
-    })),
-  });
-
-  writeJSON(filepath, snapshots);
-  return snapshots.length;
+    })))
+  );
 }
 
-/**
- * Get RSI history for a specific token.
- * Returns array of { date, rsi1d, rsi4h, rsi1h, price }
- */
 function getRSIHistory(symbol, days = 30) {
-  ensureHistoryDir();
+  const db = getDb();
   const upper = symbol.toUpperCase();
+  const rows = db.prepare(`
+    SELECT timestamp, token_data FROM rsi_snapshots
+    WHERE timestamp >= datetime('now', '-' || ? || ' days')
+    ORDER BY timestamp ASC
+  `).all(days);
+
   const result = [];
-  const historyDir = path.join(DATA_DIR, 'history');
-
-  if (!fs.existsSync(historyDir)) return result;
-
-  const files = fs.readdirSync(historyDir)
-    .filter(f => f.startsWith('rsi_') && f.endsWith('.json'))
-    .sort()
-    .slice(-days);
-
-  for (const file of files) {
-    const filepath = path.join(historyDir, file);
-    const snapshots = readJSON(filepath, []);
-    const date = file.replace('rsi_', '').replace('.json', '');
-
-    // Take the last snapshot of the day
-    const last = snapshots[snapshots.length - 1];
-    if (!last) continue;
-
-    const tokenData = last.tokens?.find(t => t.symbol === upper);
-    if (tokenData) {
-      result.push({
-        date,
-        timestamp: last.timestamp,
-        ...tokenData,
-      });
-    }
+  for (const row of rows) {
+    try {
+      const tokens = JSON.parse(row.token_data);
+      const tokenData = tokens.find(t => t.symbol === upper);
+      if (tokenData) {
+        result.push({
+          date: row.timestamp.split('T')[0],
+          timestamp: row.timestamp,
+          ...tokenData,
+        });
+      }
+    } catch (e) { /* skip malformed */ }
   }
-
   return result;
 }
 
 // ============================================================
-// Market Sentiment History - snapshot per day
+// Market Sentiment History
 // ============================================================
 
 function saveMarketSnapshot(marketData) {
-  ensureHistoryDir();
-  const date = new Date().toISOString().split('T')[0];
-  const filepath = path.join(DATA_DIR, 'history', `market_${date}.json`);
-
-  let snapshots = readJSON(filepath, []);
-
-  snapshots.push({
-    timestamp: new Date().toISOString(),
-    symbol: marketData.symbol,
-    currentPrice: marketData.currentPrice,
-    sentiment: {
-      score: marketData.sentiment?.score,
-      overall: marketData.sentiment?.overall,
-    },
-    fundingRate: marketData.fundingRate?.slice(-1)?.[0]?.rate ?? null,
-    longShortRatio: marketData.longShortRatio?.slice(-1)?.[0]?.ratio ?? null,
-    openInterest: marketData.openInterest?.openInterest ?? null,
-    takerRatio: marketData.takerVolume?.slice(-1)?.[0]?.ratio ?? null,
-  });
-
-  writeJSON(filepath, snapshots);
-  return snapshots.length;
+  const db = getDb();
+  db.prepare('INSERT INTO market_snapshots (timestamp, data) VALUES (?, ?)').run(
+    new Date().toISOString(),
+    JSON.stringify({
+      symbol: marketData.symbol,
+      currentPrice: marketData.currentPrice,
+      sentiment: marketData.sentiment,
+      fundingRate: marketData.fundingRate?.slice(-1)?.[0]?.rate ?? null,
+      longShortRatio: marketData.longShortRatio?.slice(-1)?.[0]?.ratio ?? null,
+      openInterest: marketData.openInterest?.openInterest ?? null,
+      takerRatio: marketData.takerVolume?.slice(-1)?.[0]?.ratio ?? null,
+    })
+  );
 }
 
 function getMarketHistory(days = 30) {
-  ensureHistoryDir();
-  const result = [];
-  const historyDir = path.join(DATA_DIR, 'history');
+  const db = getDb();
+  const rows = db.prepare(`
+    SELECT timestamp, data FROM market_snapshots
+    WHERE timestamp >= datetime('now', '-' || ? || ' days')
+    ORDER BY timestamp ASC
+  `).all(days);
 
-  if (!fs.existsSync(historyDir)) return result;
-
-  const files = fs.readdirSync(historyDir)
-    .filter(f => f.startsWith('market_') && f.endsWith('.json'))
-    .sort()
-    .slice(-days);
-
-  for (const file of files) {
-    const filepath = path.join(historyDir, file);
-    const snapshots = readJSON(filepath, []);
-    const date = file.replace('market_', '').replace('.json', '');
-
-    // Take last snapshot of the day
-    const last = snapshots[snapshots.length - 1];
-    if (last) {
-      result.push({ date, ...last });
+  return rows.map(row => {
+    try {
+      return { date: row.timestamp.split('T')[0], timestamp: row.timestamp, ...JSON.parse(row.data) };
+    } catch (e) {
+      return null;
     }
-  }
-
-  return result;
+  }).filter(Boolean);
 }
 
 // ============================================================
-// Price History - hourly snapshots
+// Price History
 // ============================================================
 
 function savePriceSnapshot(tokensPrices) {
-  ensureHistoryDir();
-  const date = new Date().toISOString().split('T')[0];
-  const filepath = path.join(DATA_DIR, 'history', `prices_${date}.json`);
-
-  let snapshots = readJSON(filepath, []);
-
-  snapshots.push({
-    timestamp: new Date().toISOString(),
-    prices: tokensPrices, // [{ symbol, price }]
-  });
-
-  // Keep max 24 entries per day (hourly)
-  if (snapshots.length > 24) {
-    snapshots = snapshots.slice(-24);
-  }
-
-  writeJSON(filepath, snapshots);
+  const db = getDb();
+  db.prepare('INSERT INTO price_snapshots (timestamp, prices) VALUES (?, ?)').run(
+    new Date().toISOString(),
+    JSON.stringify(tokensPrices)
+  );
 }
 
 function getPriceHistory(symbol, days = 7) {
-  ensureHistoryDir();
+  const db = getDb();
   const upper = symbol.toUpperCase();
+  const rows = db.prepare(`
+    SELECT timestamp, prices FROM price_snapshots
+    WHERE timestamp >= datetime('now', '-' || ? || ' days')
+    ORDER BY timestamp ASC
+  `).all(days);
+
   const result = [];
-  const historyDir = path.join(DATA_DIR, 'history');
-
-  if (!fs.existsSync(historyDir)) return result;
-
-  const files = fs.readdirSync(historyDir)
-    .filter(f => f.startsWith('prices_') && f.endsWith('.json'))
-    .sort()
-    .slice(-days);
-
-  for (const file of files) {
-    const filepath = path.join(historyDir, file);
-    const snapshots = readJSON(filepath, []);
-
-    for (const snap of snapshots) {
-      const tokenPrice = snap.prices?.find(p => p.symbol === upper);
+  for (const row of rows) {
+    try {
+      const prices = JSON.parse(row.prices);
+      const tokenPrice = prices.find(p => p.symbol === upper);
       if (tokenPrice) {
-        result.push({
-          timestamp: snap.timestamp,
-          price: tokenPrice.price,
-        });
+        result.push({ timestamp: row.timestamp, price: tokenPrice.price });
       }
-    }
+    } catch (e) { /* skip */ }
   }
-
   return result;
 }
 
 // ============================================================
-// Cleanup old files (keep last N days)
+// Cleanup old snapshots (keep last N days)
 // ============================================================
 
-function cleanupOldFiles(maxDays = 90) {
-  ensureHistoryDir();
-  const historyDir = path.join(DATA_DIR, 'history');
-  if (!fs.existsSync(historyDir)) return;
-
-  const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - maxDays);
-  const cutoffStr = cutoff.toISOString().split('T')[0];
-
-  const files = fs.readdirSync(historyDir);
-  let removed = 0;
-
-  for (const file of files) {
-    // Extract date from filename (rsi_2026-04-16.json -> 2026-04-16)
-    const match = file.match(/(\d{4}-\d{2}-\d{2})\.json$/);
-    if (match && match[1] < cutoffStr) {
-      fs.unlinkSync(path.join(historyDir, file));
-      removed++;
-    }
+function cleanupOldData(maxDays = 90) {
+  const db = getDb();
+  const tables = ['rsi_snapshots', 'market_snapshots', 'price_snapshots'];
+  let totalRemoved = 0;
+  for (const table of tables) {
+    const result = db.prepare(`DELETE FROM ${table} WHERE timestamp < datetime('now', '-' || ? || ' days')`).run(maxDays);
+    totalRemoved += result.changes;
   }
-
-  if (removed > 0) {
-    console.log(`Cleaned up ${removed} old history files (older than ${maxDays} days)`);
+  if (totalRemoved > 0) {
+    console.log(`Cleaned up ${totalRemoved} old snapshots (older than ${maxDays} days)`);
   }
 }
-
-module.exports = {
-  getDataDir,
-  ensureDataDir,
-  ensureHistoryDir,
-  readJSON,
-  writeJSON,
-  // RSI
-  saveRSISnapshot,
-  getRSIHistory,
-  // Market
-  saveMarketSnapshot,
-  getMarketHistory,
-  // Prices
-  savePriceSnapshot,
-  getPriceHistory,
-  // Cleanup
-  cleanupOldFiles,
-};
