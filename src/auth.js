@@ -72,7 +72,7 @@ function adminMiddleware(req, res, next) {
 }
 
 function moderatorMiddleware(req, res, next) {
-  if (!req.user || !['admin', 'moderator'].includes(req.user.role)) {
+  if (!req.user || !['owner', 'admin', 'moderator'].includes(req.user.role)) {
     return res.status(403).json({ error: 'Acceso restringido' });
   }
   next();
