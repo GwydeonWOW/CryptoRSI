@@ -203,6 +203,7 @@ function simulateBacktest(candles, config, startMs, sma200Data) {
   let positions = [];
   let equity = 0;
   const equityCurve = [];
+  const feeMultiplier = 1 - (feePercent / 100);
 
   for (let i = rsiPeriod; i < candles.length; i++) {
     const rsi = allRsi[i - rsiPeriod];
@@ -211,7 +212,6 @@ function simulateBacktest(candles, config, startMs, sma200Data) {
     const candle = candles[i];
     const price = candle.close;
     const timestamp = candle.timestamp;
-    const feeMultiplier = 1 - (feePercent / 100);
     const inRange = timestamp >= startMs;
 
     // BUY signal (only within date range)
