@@ -72,7 +72,7 @@ const AUTO_TRADER_USER = 'admin_001';
 
 async function fetchEnrichedRSI(symbol) {
   const timeframes = ['15m', '1h', '4h', '1d'];
-  const rsiData = { rsi15m: null, rsi1h: null, rsi4h: null, rsi1d: null, sma200: null, signalRSI: null };
+  const rsiData = { rsi15m: null, rsi1h: null, rsi4h: null, rsi1d: null, sma200_1h: null, sma200_4h: null, signalRSI: null };
 
   try {
     const candlesByTimeframe = {};
@@ -95,8 +95,12 @@ async function fetchEnrichedRSI(symbol) {
 
     try {
       const { candles: hourlyCandles } = await fetchCandles(symbol, '1h', 250);
-      rsiData.sma200 = calculateSMA(hourlyCandles.map(c => c.close), 200);
-    } catch (e) { /* SMA optional */ }
+      rsiData.sma200_1h = calculateSMA(hourlyCandles.map(c => c.close), 200);
+    } catch (e) { /* SMA 1h optional */ }
+    try {
+      const { candles: fourHCandles } = await fetchCandles(symbol, '4h', 250);
+      rsiData.sma200_4h = calculateSMA(fourHCandles.map(c => c.close), 200);
+    } catch (e) { /* SMA 4h optional */ }
   } catch (e) { /* RSI optional */ }
 
   return rsiData;
@@ -155,7 +159,8 @@ async function runAutoTrader(rsiDataArray, settings) {
         rsi1h: token.timeframes?.['1h']?.rsi ?? null,
         rsi4h: token.timeframes?.['4h']?.rsi ?? null,
         rsi1d: token.timeframes?.['1d']?.rsi ?? null,
-        sma200: token.sma200 ?? null,
+        sma200_1h: token.sma200_1h ?? null,
+        sma200_4h: token.sma200_4h ?? null,
         signalRSI: rsi,
       };
 
@@ -218,14 +223,18 @@ async function collectSnapshot(dispatchAlertsFn) {
           const primaryDivergence = rsiData[primaryTF]?.divergence || null;
           const recommendation = primaryRSI !== null ? getRecommendation(primaryRSI, primaryDivergence) : null;
 
-          let sma200 = null;
+          let sma200_1h = null, sma200_4h = null;
           try {
             const { candles: hourlyCandles } = await fetchCandles(token.symbol, '1h', 250);
-            sma200 = calculateSMA(hourlyCandles.map(c => c.close), 200);
-          } catch (e) { /* SMA unavailable */ }
+            sma200_1h = calculateSMA(hourlyCandles.map(c => c.close), 200);
+          } catch (e) { /* SMA 1h unavailable */ }
+          try {
+            const { candles: fourHCandles } = await fetchCandles(token.symbol, '4h', 250);
+            sma200_4h = calculateSMA(fourHCandles.map(c => c.close), 200);
+          } catch (e) { /* SMA 4h unavailable */ }
 
           return {
-            symbol: token.symbol, name: token.name, price, sma200,
+            symbol: token.symbol, name: token.name, price, sma200_1h, sma200_4h,
             primaryRSI, primaryTimeframe: primaryTF,
             divergence: primaryDivergence, recommendation, timeframes: rsiData,
           };

@@ -193,16 +193,14 @@ function simulateBacktest(candles, config, startMs, sma200Data) {
     rsiOversold = 30,
     rsiOverbought = 70,
     rsiPeriod = 14,
+    allowMultiple = false,
   } = config;
 
-  // Pre-calculate RSI from the full candle array (warm-up + range).
-  // This matches TradingView which uses all available history.
-  // Warm-up of 500 candles ensures Wilder's smoothing is fully converged.
   const allCloses = candles.map(c => c.close);
   const allRsi = calculateRSI(allCloses, rsiPeriod);
 
   const trades = [];
-  let position = null;
+  let positions = [];
   let equity = 0;
   const equityCurve = [];
 
@@ -217,72 +215,82 @@ function simulateBacktest(candles, config, startMs, sma200Data) {
     const inRange = timestamp >= startMs;
 
     // BUY signal (only within date range)
-    if (rsi <= rsiOversold && !position && inRange) {
+    if (rsi <= rsiOversold && inRange && (allowMultiple || positions.length === 0)) {
       const feeBuy = amount * (feePercent / 100);
       const effectiveAmount = amount * feeMultiplier;
       const quantity = effectiveAmount / price;
       const sma200_1h = findNearestSMA(sma200Data?.['1h'], timestamp);
       const sma200_4h = findNearestSMA(sma200Data?.['4h'], timestamp);
-      position = {
+      const seguro = (sma200_1h != null && sma200_4h != null)
+        ? (price <= sma200_1h * 0.995 && price >= sma200_4h * 0.9575)
+        : false;
+      positions.push({
         entryPrice: price, amount, quantity, feeBuy,
         rsiAtOpen: rsi, openedAt: timestamp, openIndex: i,
-        sma200_1h, sma200_4h,
-      };
+        sma200_1h, sma200_4h, seguro,
+      });
     }
 
-    // SELL signal (only within date range)
-    if (rsi >= rsiOverbought && position && inRange) {
-      const grossExit = position.quantity * price;
-      const feeSell = grossExit * (feePercent / 100);
-      const exitValue = grossExit * feeMultiplier;
-      const pnl = exitValue - position.amount;
-      const pnlPct = (pnl / position.amount) * 100;
+    // SELL signal — close ALL open positions
+    if (rsi >= rsiOverbought && positions.length > 0 && inRange) {
+      for (const pos of positions) {
+        const grossExit = pos.quantity * price;
+        const feeSell = grossExit * (feePercent / 100);
+        const exitValue = grossExit * feeMultiplier;
+        const pnl = exitValue - pos.amount;
+        const pnlPct = (pnl / pos.amount) * 100;
 
-      trades.push({
-        entryPrice: position.entryPrice, exitPrice: price,
-        amount: position.amount, quantity: position.quantity,
-        exitValue, pnl, pnlPct,
-        feeBuy: position.feeBuy, feeSell,
-        totalFees: position.feeBuy + feeSell,
-        sma200_1h: position.sma200_1h, sma200_4h: position.sma200_4h,
-        rsiAtOpen: position.rsiAtOpen, rsiAtClose: rsi,
-        openedAt: position.openedAt, closedAt: timestamp,
-        duration: timestamp - position.openedAt,
-      });
+        trades.push({
+          entryPrice: pos.entryPrice, exitPrice: price,
+          amount: pos.amount, quantity: pos.quantity,
+          exitValue, pnl, pnlPct,
+          feeBuy: pos.feeBuy, feeSell,
+          totalFees: pos.feeBuy + feeSell,
+          sma200_1h: pos.sma200_1h, sma200_4h: pos.sma200_4h,
+          seguro: pos.seguro,
+          rsiAtOpen: pos.rsiAtOpen, rsiAtClose: rsi,
+          openedAt: pos.openedAt, closedAt: timestamp,
+          duration: timestamp - pos.openedAt,
+        });
 
-      equity += pnl;
-      position = null;
+        equity += pnl;
+      }
+      positions = [];
     }
 
     // Track equity curve only within date range
     if (inRange) {
-      const openPnl = position ? (position.quantity * price - position.amount) : 0;
+      const openPnl = positions.reduce((sum, p) => sum + (p.quantity * price - p.amount), 0);
       equityCurve.push({ timestamp, equity: equity + openPnl, rsi, price });
     }
   }
 
-  if (position) {
+  // Force-close remaining positions at last price
+  if (positions.length > 0) {
     const lastPrice = candles[candles.length - 1].close;
     const lastTs = candles[candles.length - 1].timestamp;
-    const grossExit = position.quantity * lastPrice;
-    const feeSell = grossExit * (feePercent / 100);
-    const exitValue = grossExit * feeMultiplier;
-    const pnl = exitValue - position.amount;
-    const pnlPct = (pnl / position.amount) * 100;
+    for (const pos of positions) {
+      const grossExit = pos.quantity * lastPrice;
+      const feeSell = grossExit * (feePercent / 100);
+      const exitValue = grossExit * feeMultiplier;
+      const pnl = exitValue - pos.amount;
+      const pnlPct = (pnl / pos.amount) * 100;
 
-    trades.push({
-      entryPrice: position.entryPrice, exitPrice: lastPrice,
-      amount: position.amount, quantity: position.quantity,
-      exitValue, pnl, pnlPct,
-      feeBuy: position.feeBuy, feeSell,
-      totalFees: position.feeBuy + feeSell,
-      sma200_1h: position.sma200_1h, sma200_4h: position.sma200_4h,
-      rsiAtOpen: position.rsiAtOpen, rsiAtClose: null,
-      openedAt: position.openedAt, closedAt: lastTs,
-      duration: lastTs - position.openedAt, forcedClose: true,
-    });
+      trades.push({
+        entryPrice: pos.entryPrice, exitPrice: lastPrice,
+        amount: pos.amount, quantity: pos.quantity,
+        exitValue, pnl, pnlPct,
+        feeBuy: pos.feeBuy, feeSell,
+        totalFees: pos.feeBuy + feeSell,
+        sma200_1h: pos.sma200_1h, sma200_4h: pos.sma200_4h,
+        seguro: pos.seguro,
+        rsiAtOpen: pos.rsiAtOpen, rsiAtClose: null,
+        openedAt: pos.openedAt, closedAt: lastTs,
+        duration: lastTs - pos.openedAt, forcedClose: true,
+      });
 
-    equity += pnl;
+      equity += pnl;
+    }
   }
 
   const wins = trades.filter(t => t.pnl > 0).length;
@@ -324,6 +332,7 @@ router.post('/backtest/run', authMiddleware, adminMiddleware, async (req, res) =
     symbol, timeframe = '1h', fromDate, toDate,
     amount, feePercent, rsiOversold, rsiOverbought,
     startMs: clientStartMs, endMs: clientEndMs,
+    allowMultiple,
   } = req.body;
 
   if (!symbol) return res.status(400).json({ error: 'Symbol is required' });
@@ -347,6 +356,7 @@ router.post('/backtest/run', authMiddleware, adminMiddleware, async (req, res) =
     feePercent: feePercent ?? sim.feePercent ?? 0,
     rsiOversold: rsiOversold ?? sim.timeframes?.[timeframe]?.rsiOversold ?? 30,
     rsiOverbought: rsiOverbought ?? sim.timeframes?.[timeframe]?.rsiOverbought ?? 70,
+    allowMultiple: !!allowMultiple,
   };
 
   try {

@@ -5,12 +5,17 @@
 
 const { getDb } = require('./db');
 
-function _getRSIData(rsiData) {
+function _getRSIData(rsiData, price) {
   const signalRSI = typeof rsiData === 'number' ? rsiData : (rsiData?.signalRSI ?? rsiData);
+  const sma200_1h = rsiData?.sma200_1h ?? rsiData?.sma200 ?? null;
+  const sma200_4h = rsiData?.sma200_4h ?? null;
+  const seguro = (price && sma200_1h && sma200_4h)
+    ? (price <= sma200_1h * 0.995 && price >= sma200_4h * 0.9575)
+    : false;
   const rsi = typeof rsiData === 'object' && rsiData !== null
-    ? { rsi15m: rsiData.rsi15m ?? null, rsi1h: rsiData.rsi1h ?? null, rsi4h: rsiData.rsi4h ?? null, rsi1d: rsiData.rsi1d ?? null, sma200: rsiData.sma200 ?? null, signalRSI }
+    ? { rsi15m: rsiData.rsi15m ?? null, rsi1h: rsiData.rsi1h ?? null, rsi4h: rsiData.rsi4h ?? null, rsi1d: rsiData.rsi1d ?? null, sma200_1h, sma200_4h, seguro, signalRSI }
     : { signalRSI };
-  return { signalRSI, rsi };
+  return { signalRSI, rsi, seguro };
 }
 
 /**
@@ -27,7 +32,7 @@ function openPosition(userId, symbol, price, rsiData, amount = 100, timeframe = 
     return { success: false, message: `Ya tienes una posicion abierta en ${upper} (${timeframe})` };
   }
 
-  const { signalRSI, rsi } = _getRSIData(rsiData);
+  const { signalRSI, rsi, seguro } = _getRSIData(rsiData, price);
   const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
   const feeMultiplier = 1 - (feePercent / 100);
@@ -43,7 +48,7 @@ function openPosition(userId, symbol, price, rsiData, amount = 100, timeframe = 
     success: true,
     position: {
       id, symbol: upper, timeframe, entryPrice: price, rsiAtOpen: signalRSI, rsi,
-      amount, quantity, feePercent, openedAt: new Date().toISOString(),
+      amount, quantity, feePercent, seguro, openedAt: new Date().toISOString(),
     },
   };
 }
@@ -69,7 +74,7 @@ function closePosition(userId, symbol, currentPrice, rsiData, timeframe = '1d', 
     return { success: false, message: `No hay posicion abierta en ${upper} (${timeframe})` };
   }
 
-  const { signalRSI, rsi: rsiClose } = _getRSIData(rsiData);
+  const { signalRSI, rsi: rsiClose, seguro } = _getRSIData(rsiData, currentPrice);
   const feeMultiplier = 1 - (feePercent / 100);
   const exitValue = row.quantity * currentPrice * feeMultiplier;
   const pnl = exitValue - row.amount;
@@ -91,6 +96,7 @@ function closePosition(userId, symbol, currentPrice, rsiData, timeframe = '1d', 
     rsiAtClose: signalRSI,
     rsi: row.rsi_data ? JSON.parse(row.rsi_data) : null,
     rsiClose,
+    seguro,
     openedAt: row.opened_at,
     closedAt: new Date().toISOString(),
   };

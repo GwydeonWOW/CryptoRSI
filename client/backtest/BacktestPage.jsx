@@ -38,6 +38,7 @@ export default function BacktestPage() {
     feePercent: 0,
     rsiOversold: 30,
     rsiOverbought: 70,
+    allowMultiple: false,
   });
 
   useEffect(() => {
@@ -154,6 +155,15 @@ export default function BacktestPage() {
             <input type="number" value={form.rsiOverbought} onChange={e => update('rsiOverbought', Number(e.target.value))}
               min={1} max={100} step={1} style={inputStyle} />
           </Field>
+
+          {/* Multi-buy */}
+          <Field label="Multi-compra">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+              <input type="checkbox" checked={form.allowMultiple} onChange={e => update('allowMultiple', e.target.checked)}
+                style={{ width: 16, height: 16, accentColor: 'var(--blue)' }} />
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>Permitir multiples compras</span>
+            </div>
+          </Field>
         </div>
 
         {/* Date range */}
@@ -238,6 +248,7 @@ export default function BacktestPage() {
                   { key: 'totalFees', label: 'Fees', render: v => v ? `$${v.toFixed(2)}` : '-' },
                   { key: 'sma200_1h', label: 'SMA200 1h', render: v => v != null ? `$${formatPrice(v)}` : '-' },
                   { key: 'sma200_4h', label: 'SMA200 4h', render: v => v != null ? `$${formatPrice(v)}` : '-' },
+                  { key: 'seguro', label: 'Seguro', render: v => v ? <span style={{ color: 'var(--green)', fontWeight: 700 }}>SI</span> : '' },
                 ]}
                 data={[...result.trades].reverse()}
                 emptyText="Sin operaciones"
@@ -353,7 +364,7 @@ function formatDuration(ms) {
 }
 
 function exportCSV(result, form, timezone) {
-  const headers = ['Apertura', 'Cierre', 'Duracion', 'P. Compra', 'P. Venta', 'Inversion', 'RSI Compra', 'RSI Venta', 'P&L ($)', 'P&L (%)', 'Fee Compra', 'Fee Venta', 'Fees Total', 'SMA200 1h', 'SMA200 4h'];
+  const headers = ['Apertura', 'Cierre', 'Duracion', 'P. Compra', 'P. Venta', 'Inversion', 'RSI Compra', 'RSI Venta', 'P&L ($)', 'P&L (%)', 'Fee Compra', 'Fee Venta', 'Fees Total', 'SMA200 1h', 'SMA200 4h', 'Seguro'];
   const rows = result.trades.map(t => [
     formatTs(t.openedAt, timezone),
     formatTs(t.closedAt, timezone),
@@ -370,6 +381,7 @@ function exportCSV(result, form, timezone) {
     t.totalFees?.toFixed(2) ?? '',
     t.sma200_1h != null ? formatPrice(t.sma200_1h) : '',
     t.sma200_4h != null ? formatPrice(t.sma200_4h) : '',
+    t.seguro ? 'SI' : '',
   ]);
 
   const summary = [

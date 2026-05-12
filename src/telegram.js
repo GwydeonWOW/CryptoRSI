@@ -199,7 +199,7 @@ async function checkAndNotify(rsiDataArray, settings) {
     const rsi1h = token.timeframes?.['1h']?.rsi;
     const rsi15m = token.timeframes?.['15m']?.rsi;
     const priceStr = fmtPrice(price);
-    const sma200 = token.sma200;
+    const sma200 = token.sma200_1h ?? token.sma200;
     const sma200Label = sma200 ? `${price >= sma200 ? '📈' : '📉'} SMA 200: <b>${fmtPrice(sma200)}</b> (${price >= sma200 ? 'encima' : 'debajo'})\n` : '';
 
     const alertConfig = { ...alertGeneric, ...(tokenAlerts[symbol] || {}) };
@@ -312,7 +312,7 @@ async function sendAlert(type, token, alertRSI, alertTf, alertConfig, chatId, bo
   const rsi1h = token.timeframes?.['1h']?.rsi;
   const rsi15m = token.timeframes?.['15m']?.rsi;
   const priceStr = fmtPrice(price);
-  const sma200 = token.sma200;
+  const sma200 = token.sma200_1h ?? token.sma200;
   const sma200Label = sma200 ? `${price >= sma200 ? '📈' : '📉'} SMA 200: <b>${fmtPrice(sma200)}</b> (${price >= sma200 ? 'encima' : 'debajo'})\n` : '';
 
   let text;

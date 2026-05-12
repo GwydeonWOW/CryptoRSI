@@ -117,7 +117,7 @@ async function checkAndNotifyDiscord(rsiDataArray, settings) {
     const alertRSI = token.timeframes?.[alertTf]?.rsi || token.primaryRSI;
     const tfField = buildTimeframeField(rsi15m, rsi1h, rsi4h, rsi1d);
 
-    const sma200 = token.sma200;
+    const sma200 = token.sma200_1h ?? token.sma200;
     const sma200Field = sma200 ? {
       name: 'SMA 200',
       value: `**${fmtPrice(sma200)}** ${token.price >= sma200 ? '📈 Encima' : '📉 Debajo'}`,
@@ -239,7 +239,7 @@ async function sendAlert(type, token, alertRSI, alertTf, alertConfig, webhookUrl
   const rsi15m = token.timeframes?.['15m']?.rsi;
   const tfField = buildTimeframeField(rsi15m, rsi1h, rsi4h, rsi1d);
 
-  const sma200 = token.sma200;
+  const sma200 = token.sma200_1h ?? token.sma200;
   const sma200Field = sma200 ? {
     name: 'SMA 200',
     value: `**${fmtPrice(sma200)}** ${token.price >= sma200 ? '📈 Encima' : '📉 Debajo'}`,
