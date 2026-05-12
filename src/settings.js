@@ -20,9 +20,15 @@ const DEFAULT_SETTINGS = {
   seguro: {
     mult1h: 0.995,
     mult4h: 0.9575,
-    buyFilter: true,
-    filterAbove1h: 0.98,
-    filterAbove4h: 0.99,
+  },
+  entryFilter: {
+    enabled: false,
+    action: 'skip',
+    logic: 'OR',
+    conditions: [
+      { field: 'price', op: '>=', target: 'sma200_1h', mult: 0.98, enabled: true },
+      { field: 'price', op: '>=', target: 'sma200_4h', mult: 0.99, enabled: true },
+    ],
   },
   alerts: {
     generic: {
@@ -69,6 +75,7 @@ function _mergeWithDefaults(settings) {
     telegram: { ...DEFAULT_SETTINGS.telegram, ...(settings.telegram || {}) },
     discord: { ...DEFAULT_SETTINGS.discord, ...(settings.discord || {}) },
     seguro: { ...DEFAULT_SETTINGS.seguro, ...(settings.seguro || {}) },
+    entryFilter: settings.entryFilter || DEFAULT_SETTINGS.entryFilter,
     alerts: {
       generic: { ...DEFAULT_SETTINGS.alerts.generic, ...((settings.alerts || {}).generic || {}) },
       tokens: { ...((settings.alerts || {}).tokens || {}) },
@@ -112,6 +119,7 @@ function saveSettings(updates) {
     telegram: { ...current.telegram, ...(updates.telegram || {}) },
     discord: { ...current.discord, ...(updates.discord || {}) },
     seguro: { ...current.seguro, ...(updates.seguro || {}) },
+    entryFilter: updates.entryFilter ?? current.entryFilter ?? DEFAULT_SETTINGS.entryFilter,
     alerts: {
       generic: { ...current.alerts.generic, ...((updates.alerts || {}).generic || {}) },
       tokens: { ...current.alerts.tokens, ...((updates.alerts || {}).tokens || {}) },

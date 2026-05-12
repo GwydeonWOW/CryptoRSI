@@ -11,6 +11,7 @@ const {
   saveRSISnapshot, saveMarketSnapshot, savePriceSnapshot,
 } = require('../storage');
 const { loadSettings } = require('../settings');
+const { shouldSkip } = require('../entryFilter');
 const cooldownStore = require('../cooldownStore');
 const logger = require('../logger');
 
@@ -169,15 +170,15 @@ async function runAutoTrader(rsiDataArray, settings) {
 
       // BUY logic
       if (rsi <= (config.rsiOversold || 30)) {
-        // Seguro buy filter: skip if price too close to SMAs
-        const seguroCfg = sim.seguro || {};
-        if (seguroCfg.buyFilter && token.sma200_1h && token.sma200_4h) {
-          const filterAbove1h = seguroCfg.filterAbove1h ?? 0.98;
-          const filterAbove4h = seguroCfg.filterAbove4h ?? 0.99;
-          if (token.price >= token.sma200_1h * filterAbove1h || token.price >= token.sma200_4h * filterAbove4h) {
-            logger.info(`[SIM] SKIP BUY ${token.symbol} (${tf}) | RSI ${rsi.toFixed(1)} <= ${config.rsiOversold || 30} but price too close to SMA200 (buy filter)`);
-            continue;
-          }
+        // Entry filter evaluation
+        const filterData = {
+          price: token.price, sma200_1h: token.sma200_1h, sma200_4h: token.sma200_4h,
+          rsi, rsi1h: token.timeframes?.['1h']?.rsi, rsi4h: token.timeframes?.['4h']?.rsi,
+          rsi1d: token.timeframes?.['1d']?.rsi, rsi15m: token.timeframes?.['15m']?.rsi,
+        };
+        if (shouldSkip(settings.entryFilter, filterData)) {
+          logger.info(`[SIM] SKIP BUY ${token.symbol} (${tf}) | RSI ${rsi.toFixed(1)} <= ${config.rsiOversold || 30} but entry filter blocked`);
+          continue;
         }
 
         if (allowMultiple) {

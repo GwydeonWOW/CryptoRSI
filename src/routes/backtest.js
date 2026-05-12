@@ -10,6 +10,7 @@ const { authMiddleware, adminMiddleware } = require('../auth');
 const fetch = require('node-fetch');
 const { calculateRSI } = require('../rsi');
 const { calculateSMA } = require('../api');
+const { shouldSkip } = require('../entryFilter');
 const { loadSettings } = require('../settings');
 const { loadTokens } = require('../config');
 const logger = require('../logger');
@@ -201,9 +202,7 @@ function simulateBacktest(candles, config, startMs, sma200Data) {
     timeExitRSI = 50,
     seguroMult1h = 0.995,
     seguroMult4h = 0.9575,
-    buyFilter = false,
-    filterAbove1h = 0.98,
-    filterAbove4h = 0.99,
+    entryFilter = null,
   } = config;
 
   const allCloses = candles.map(c => c.close);
@@ -234,9 +233,8 @@ function simulateBacktest(candles, config, startMs, sma200Data) {
     const withinMaxBuys = !maxBuys || positions.length < maxBuys;
     const sma200_1h = findNearestSMA(sma200Data?.['1h'], timestamp);
     const sma200_4h = findNearestSMA(sma200Data?.['4h'], timestamp);
-    const passesBuyFilter = !buyFilter || sma200_1h == null || sma200_4h == null
-      || (price < sma200_1h * filterAbove1h && price < sma200_4h * filterAbove4h);
-    if (rsi <= rsiOversold && inRange && canBuy && withinDelay && withinBudget && withinMaxBuys && passesBuyFilter) {
+    const passesEntryFilter = !shouldSkip(entryFilter, { price, sma200_1h, sma200_4h, rsi });
+    if (rsi <= rsiOversold && inRange && canBuy && withinDelay && withinBudget && withinMaxBuys && passesEntryFilter) {
       const feeBuy = amount * (feePercent / 100);
       const effectiveAmount = amount * feeMultiplier;
       const quantity = effectiveAmount / price;
@@ -394,9 +392,7 @@ router.post('/backtest/run', authMiddleware, adminMiddleware, async (req, res) =
     timeExitRSI: timeExitRSI ? Number(timeExitRSI) : 50,
     seguroMult1h: seguro.mult1h ?? 0.995,
     seguroMult4h: seguro.mult4h ?? 0.9575,
-    buyFilter: seguro.buyFilter ?? false,
-    filterAbove1h: seguro.filterAbove1h ?? 0.98,
-    filterAbove4h: seguro.filterAbove4h ?? 0.99,
+    entryFilter: settings.entryFilter || null,
   };
 
   try {
