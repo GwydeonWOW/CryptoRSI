@@ -196,6 +196,7 @@ function simulateBacktest(candles, config, startMs, sma200Data) {
     allowMultiple = false,
     maxInvestment = 0,
     minDelay = 0,
+    maxBuys = 0,
     timeExitHours = 0,
     timeExitRSI = 50,
   } = config;
@@ -225,7 +226,8 @@ function simulateBacktest(candles, config, startMs, sma200Data) {
     const withinDelay = !minDelay || timestamp - lastBuyTimestamp >= minDelay;
     const openInvested = positions.reduce((sum, p) => sum + p.amount, 0);
     const withinBudget = !maxInvestment || openInvested + amount <= maxInvestment;
-    if (rsi <= rsiOversold && inRange && canBuy && withinDelay && withinBudget) {
+    const withinMaxBuys = !maxBuys || positions.length < maxBuys;
+    if (rsi <= rsiOversold && inRange && canBuy && withinDelay && withinBudget && withinMaxBuys) {
       const feeBuy = amount * (feePercent / 100);
       const effectiveAmount = amount * feeMultiplier;
       const quantity = effectiveAmount / price;
@@ -352,7 +354,7 @@ router.post('/backtest/run', authMiddleware, adminMiddleware, async (req, res) =
     amount, feePercent, rsiOversold, rsiOverbought,
     startMs: clientStartMs, endMs: clientEndMs,
     allowMultiple, maxInvestment, minDelay,
-    timeExitHours, timeExitRSI,
+    timeExitHours, timeExitRSI, maxBuys,
   } = req.body;
 
   if (!symbol) return res.status(400).json({ error: 'Symbol is required' });
@@ -379,6 +381,7 @@ router.post('/backtest/run', authMiddleware, adminMiddleware, async (req, res) =
     allowMultiple: !!allowMultiple,
     maxInvestment: maxInvestment ? Number(maxInvestment) : 0,
     minDelay: minDelay ? Number(minDelay) : 0,
+    maxBuys: maxBuys ? Number(maxBuys) : 0,
     timeExitHours: timeExitHours ? Number(timeExitHours) : 0,
     timeExitRSI: timeExitRSI ? Number(timeExitRSI) : 50,
   };

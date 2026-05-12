@@ -41,6 +41,7 @@ export default function BacktestPage() {
     allowMultiple: false,
     maxInvestment: 0,
     minDelay: 0,
+    maxBuys: 0,
     timeExitHours: 0,
     timeExitRSI: 50,
   });
@@ -97,7 +98,7 @@ export default function BacktestPage() {
       const res = await fetch('/api/backtest/run', {
         method: 'POST',
         headers: getAuthHeaders(),
-        body: JSON.stringify({ ...form, startMs, endMs, minDelay: (form.minDelay || 0) * 3600000, timeExitHours: form.timeExitHours || 0, timeExitRSI: form.timeExitRSI || 50 }),
+        body: JSON.stringify({ ...form, startMs, endMs, minDelay: (form.minDelay || 0) * 3600000, maxBuys: form.maxBuys || 0, timeExitHours: form.timeExitHours || 0, timeExitRSI: form.timeExitRSI || 50 }),
       });
       const data = await res.json();
       if (!res.ok) { addToast('error', data.error); return; }
@@ -173,6 +174,12 @@ export default function BacktestPage() {
           <Field label="Inversion Max ($)">
             <input type="number" value={form.maxInvestment || ''} onChange={e => update('maxInvestment', Number(e.target.value))}
               min={0} step={1000} placeholder="Sin limite" style={inputStyle} />
+          </Field>
+
+          {/* Max buys */}
+          <Field label="Max Compras">
+            <input type="number" value={form.maxBuys || ''} onChange={e => update('maxBuys', Number(e.target.value))}
+              min={0} step={1} placeholder="Sin limite" style={inputStyle} />
           </Field>
 
           {/* Min delay */}
