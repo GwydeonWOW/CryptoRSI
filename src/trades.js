@@ -11,10 +11,10 @@ function _getRSIData(rsiData, price) {
   const sma200_1h = rsiData?.sma200_1h ?? rsiData?.sma200 ?? null;
   const sma200_4h = rsiData?.sma200_4h ?? null;
   const seguroCfg = loadSettings().seguro || {};
-  const maxBelow1h = seguroCfg.maxBelow1h ?? 0.5;
-  const maxBelow4h = seguroCfg.maxBelow4h ?? 4.25;
+  const mult1h = seguroCfg.mult1h ?? 0.995;
+  const mult4h = seguroCfg.mult4h ?? 0.9575;
   const seguro = (price && sma200_1h && sma200_4h)
-    ? (price <= sma200_1h * (1 - maxBelow1h / 100) && price >= sma200_4h * (1 - maxBelow4h / 100))
+    ? (price <= sma200_1h * mult1h && price >= sma200_4h * mult4h)
     : false;
   const rsi = typeof rsiData === 'object' && rsiData !== null
     ? { rsi15m: rsiData.rsi15m ?? null, rsi1h: rsiData.rsi1h ?? null, rsi4h: rsiData.rsi4h ?? null, rsi1d: rsiData.rsi1d ?? null, sma200: sma200_1h, sma200_1h, sma200_4h, seguro, signalRSI }

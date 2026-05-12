@@ -18,8 +18,8 @@ const DEFAULT_SETTINGS = {
     enabled: false,
   },
   seguro: {
-    maxBelow1h: 0.5,
-    maxBelow4h: 4.25,
+    mult1h: 0.995,
+    mult4h: 0.9575,
   },
   alerts: {
     generic: {

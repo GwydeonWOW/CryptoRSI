@@ -199,8 +199,8 @@ function simulateBacktest(candles, config, startMs, sma200Data) {
     maxBuys = 0,
     timeExitHours = 0,
     timeExitRSI = 50,
-    seguroMaxBelow1h = 0.5,
-    seguroMaxBelow4h = 4.25,
+    seguroMult1h = 0.995,
+    seguroMult4h = 0.9575,
   } = config;
 
   const allCloses = candles.map(c => c.close);
@@ -236,7 +236,7 @@ function simulateBacktest(candles, config, startMs, sma200Data) {
       const sma200_1h = findNearestSMA(sma200Data?.['1h'], timestamp);
       const sma200_4h = findNearestSMA(sma200Data?.['4h'], timestamp);
       const seguro = (sma200_1h != null && sma200_4h != null)
-        ? (price <= sma200_1h * (1 - seguroMaxBelow1h / 100) && price >= sma200_4h * (1 - seguroMaxBelow4h / 100))
+        ? (price <= sma200_1h * seguroMult1h && price >= sma200_4h * seguroMult4h)
         : false;
       positions.push({
         entryPrice: price, amount, quantity, feeBuy,
@@ -387,8 +387,8 @@ router.post('/backtest/run', authMiddleware, adminMiddleware, async (req, res) =
     maxBuys: maxBuys ? Number(maxBuys) : 0,
     timeExitHours: timeExitHours ? Number(timeExitHours) : 0,
     timeExitRSI: timeExitRSI ? Number(timeExitRSI) : 50,
-    seguroMaxBelow1h: seguro.maxBelow1h ?? 0.5,
-    seguroMaxBelow4h: seguro.maxBelow4h ?? 4.25,
+    seguroMult1h: seguro.mult1h ?? 0.995,
+    seguroMult4h: seguro.mult4h ?? 0.9575,
   };
 
   try {
