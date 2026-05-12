@@ -169,6 +169,17 @@ async function runAutoTrader(rsiDataArray, settings) {
 
       // BUY logic
       if (rsi <= (config.rsiOversold || 30)) {
+        // Seguro buy filter: skip if price too close to SMAs
+        const seguroCfg = sim.seguro || {};
+        if (seguroCfg.buyFilter && token.sma200_1h && token.sma200_4h) {
+          const filterAbove1h = seguroCfg.filterAbove1h ?? 0.98;
+          const filterAbove4h = seguroCfg.filterAbove4h ?? 0.99;
+          if (token.price >= token.sma200_1h * filterAbove1h || token.price >= token.sma200_4h * filterAbove4h) {
+            logger.info(`[SIM] SKIP BUY ${token.symbol} (${tf}) | RSI ${rsi.toFixed(1)} <= ${config.rsiOversold || 30} but price too close to SMA200 (buy filter)`);
+            continue;
+          }
+        }
+
         if (allowMultiple) {
           const cooldownKey = `sim:${token.symbol}:${tf}`;
           const lastBuy = cooldownStore.get(cooldownKey);

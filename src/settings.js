@@ -20,6 +20,9 @@ const DEFAULT_SETTINGS = {
   seguro: {
     mult1h: 0.995,
     mult4h: 0.9575,
+    buyFilter: true,
+    filterAbove1h: 0.98,
+    filterAbove4h: 0.99,
   },
   alerts: {
     generic: {

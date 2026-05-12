@@ -201,6 +201,9 @@ function simulateBacktest(candles, config, startMs, sma200Data) {
     timeExitRSI = 50,
     seguroMult1h = 0.995,
     seguroMult4h = 0.9575,
+    buyFilter = false,
+    filterAbove1h = 0.98,
+    filterAbove4h = 0.99,
   } = config;
 
   const allCloses = candles.map(c => c.close);
@@ -229,12 +232,14 @@ function simulateBacktest(candles, config, startMs, sma200Data) {
     const openInvested = positions.reduce((sum, p) => sum + p.amount, 0);
     const withinBudget = !maxInvestment || openInvested + amount <= maxInvestment;
     const withinMaxBuys = !maxBuys || positions.length < maxBuys;
-    if (rsi <= rsiOversold && inRange && canBuy && withinDelay && withinBudget && withinMaxBuys) {
+    const sma200_1h = findNearestSMA(sma200Data?.['1h'], timestamp);
+    const sma200_4h = findNearestSMA(sma200Data?.['4h'], timestamp);
+    const passesBuyFilter = !buyFilter || sma200_1h == null || sma200_4h == null
+      || (price < sma200_1h * filterAbove1h && price < sma200_4h * filterAbove4h);
+    if (rsi <= rsiOversold && inRange && canBuy && withinDelay && withinBudget && withinMaxBuys && passesBuyFilter) {
       const feeBuy = amount * (feePercent / 100);
       const effectiveAmount = amount * feeMultiplier;
       const quantity = effectiveAmount / price;
-      const sma200_1h = findNearestSMA(sma200Data?.['1h'], timestamp);
-      const sma200_4h = findNearestSMA(sma200Data?.['4h'], timestamp);
       const seguro = (sma200_1h != null && sma200_4h != null)
         ? (price <= sma200_1h * seguroMult1h && price >= sma200_4h * seguroMult4h)
         : false;
@@ -389,6 +394,9 @@ router.post('/backtest/run', authMiddleware, adminMiddleware, async (req, res) =
     timeExitRSI: timeExitRSI ? Number(timeExitRSI) : 50,
     seguroMult1h: seguro.mult1h ?? 0.995,
     seguroMult4h: seguro.mult4h ?? 0.9575,
+    buyFilter: seguro.buyFilter ?? false,
+    filterAbove1h: seguro.filterAbove1h ?? 0.98,
+    filterAbove4h: seguro.filterAbove4h ?? 0.99,
   };
 
   try {

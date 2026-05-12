@@ -365,12 +365,18 @@ function SeguroSection({ settings, onUpdate, onMsg }) {
   const sg = settings.seguro || {};
   const [mult1h, setMult1h] = useState(sg.mult1h ?? 0.995);
   const [mult4h, setMult4h] = useState(sg.mult4h ?? 0.9575);
+  const [buyFilter, setBuyFilter] = useState(sg.buyFilter ?? true);
+  const [filterAbove1h, setFilterAbove1h] = useState(sg.filterAbove1h ?? 0.98);
+  const [filterAbove4h, setFilterAbove4h] = useState(sg.filterAbove4h ?? 0.99);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     const s = settings.seguro || {};
     setMult1h(s.mult1h ?? 0.995);
     setMult4h(s.mult4h ?? 0.9575);
+    setBuyFilter(s.buyFilter ?? true);
+    setFilterAbove1h(s.filterAbove1h ?? 0.98);
+    setFilterAbove4h(s.filterAbove4h ?? 0.99);
   }, [settings]);
 
   async function save() {
@@ -379,7 +385,7 @@ function SeguroSection({ settings, onUpdate, onMsg }) {
       const res = await fetch('/api/settings', {
         method: 'PUT',
         headers: getAuthHeaders(),
-        body: JSON.stringify({ seguro: { mult1h: Number(mult1h), mult4h: Number(mult4h) } }),
+        body: JSON.stringify({ seguro: { mult1h: Number(mult1h), mult4h: Number(mult4h), buyFilter, filterAbove1h: Number(filterAbove1h), filterAbove4h: Number(filterAbove4h) } }),
       });
       const data = await res.json();
       if (data.success) { onMsg({ type: 'ok', text: 'Seguro guardado' }); onUpdate(); }
@@ -402,6 +408,30 @@ function SeguroSection({ settings, onUpdate, onMsg }) {
         <input type="number" min="0.8" max="1.1" step="0.001" value={mult4h}
           onChange={e => setMult4h(parseFloat(e.target.value) || 0.9575)} style={{ width: 80, textAlign: 'right' }} />
       </Row>
+
+      <div style={{ borderTop: '1px solid var(--surface2)', margin: '0.75rem 0', paddingTop: '0.75rem' }}>
+        <div style={{ fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.5rem', color: 'var(--text-dim)' }}>
+          Filtro de compra
+        </div>
+        <p className="section-desc" style={{ marginBottom: '0.5rem' }}>
+          Si el precio &ge; SMA200_1h &times; mult1h OR precio &ge; SMA200_4h &times; mult4h → OMITIR compra.
+          Solo compra cuando el precio esta suficientemente por debajo de ambas SMAs.
+        </p>
+        <Row label="Filtro activo"><Toggle checked={buyFilter} onChange={setBuyFilter} /></Row>
+        {buyFilter && (
+          <>
+            <Row label="Skip si price ≥ SMA200_1h ×">
+              <input type="number" min="0.8" max="1.1" step="0.001" value={filterAbove1h}
+                onChange={e => setFilterAbove1h(parseFloat(e.target.value) || 0.98)} style={{ width: 80, textAlign: 'right' }} />
+            </Row>
+            <Row label="Skip si price ≥ SMA200_4h ×">
+              <input type="number" min="0.8" max="1.1" step="0.001" value={filterAbove4h}
+                onChange={e => setFilterAbove4h(parseFloat(e.target.value) || 0.99)} style={{ width: 80, textAlign: 'right' }} />
+            </Row>
+          </>
+        )}
+      </div>
+
       <button className="btn btn-primary btn-sm" onClick={save} disabled={loading}>
         Guardar Configuracion Seguro
       </button>
