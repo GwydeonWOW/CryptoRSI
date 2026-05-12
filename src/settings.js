@@ -17,6 +17,10 @@ const DEFAULT_SETTINGS = {
     webhookUrl: '',
     enabled: false,
   },
+  seguro: {
+    maxBelow1h: 0.5,
+    maxBelow4h: 4.25,
+  },
   alerts: {
     generic: {
       rsiOversold: 30,
@@ -61,6 +65,7 @@ function _mergeWithDefaults(settings) {
     timezone: settings.timezone || 'Europe/Madrid',
     telegram: { ...DEFAULT_SETTINGS.telegram, ...(settings.telegram || {}) },
     discord: { ...DEFAULT_SETTINGS.discord, ...(settings.discord || {}) },
+    seguro: { ...DEFAULT_SETTINGS.seguro, ...(settings.seguro || {}) },
     alerts: {
       generic: { ...DEFAULT_SETTINGS.alerts.generic, ...((settings.alerts || {}).generic || {}) },
       tokens: { ...((settings.alerts || {}).tokens || {}) },
@@ -103,6 +108,7 @@ function saveSettings(updates) {
     timezone: updates.timezone ?? current.timezone ?? 'Europe/Madrid',
     telegram: { ...current.telegram, ...(updates.telegram || {}) },
     discord: { ...current.discord, ...(updates.discord || {}) },
+    seguro: { ...current.seguro, ...(updates.seguro || {}) },
     alerts: {
       generic: { ...current.alerts.generic, ...((updates.alerts || {}).generic || {}) },
       tokens: { ...current.alerts.tokens, ...((updates.alerts || {}).tokens || {}) },

@@ -27,6 +27,7 @@ export default function BacktestPage() {
   const [defaults, setDefaults] = useState(null);
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [seguroOnly, setSeguroOnly] = useState(false);
 
   const now = new Date();
   const [form, setForm] = useState({
@@ -87,6 +88,7 @@ export default function BacktestPage() {
     if (!form.symbol) { addToast('error', 'Selecciona un token'); return; }
     setLoading(true);
     setResult(null);
+    setSeguroOnly(false);
     try {
       // Send timestamps in user's local timezone so the backend
       // uses the correct date range regardless of server timezone
@@ -228,31 +230,23 @@ export default function BacktestPage() {
       {/* Results */}
       {result && (
         <div>
-          {/* Export buttons */}
+          {/* Export buttons + Seguro filter */}
           {result.trades.length > 0 && (
-            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
-              <button className="btn btn-sm" onClick={() => exportCSV(result, form, timezone)}
+            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+              <button className="btn btn-sm" onClick={() => exportCSV(seguroOnly ? { ...result, trades: result.trades.filter(t => t.seguro) } : result, form, timezone)}
                 style={{ padding: '0.4rem 1rem', background: 'var(--surface2)', color: 'var(--text)', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: '0.8rem' }}>
-                Exportar CSV
+                Exportar CSV{seguroOnly ? ' (solo seguro)' : ''}
               </button>
+              {result.trades.some(t => t.seguro) && (
+                <button className="btn btn-sm" onClick={() => setSeguroOnly(!seguroOnly)}
+                  style={{ padding: '0.4rem 1rem', background: seguroOnly ? 'rgba(34,197,94,0.15)' : 'var(--surface2)', color: seguroOnly ? 'var(--green)' : 'var(--text-dim)', border: seguroOnly ? '1px solid rgba(34,197,94,0.4)' : 'none', borderRadius: 6, cursor: 'pointer', fontSize: '0.8rem', fontWeight: seguroOnly ? 600 : 400 }}>
+                  Solo Seguro{seguroOnly ? ` (${result.trades.filter(t => t.seguro).length})` : ''}
+                </button>
+              )}
             </div>
           )}
           {/* Stats Cards */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '0.75rem', marginBottom: '1.5rem' }}>
-            <StatCard label="Operaciones" value={result.stats.totalTrades} />
-            <StatCard label="Win Rate" value={`${result.stats.winRate.toFixed(1)}%`}
-              color={result.stats.winRate >= 50 ? 'var(--green)' : 'var(--red)'} />
-            <StatCard label="P&L Total" value={formatPnl(result.stats.totalPnl)}
-              color={result.stats.totalPnl >= 0 ? 'var(--green)' : 'var(--red)'} />
-            <StatCard label="P&L Total (%)" value={`${(result.stats.totalPnlPct || 0).toFixed(2)}%`}
-              color={(result.stats.totalPnlPct || 0) >= 0 ? 'var(--green)' : 'var(--red)'} />
-            <StatCard label="P&L Medio" value={`${result.stats.avgPnlPct.toFixed(2)}%`}
-              color={result.stats.avgPnlPct >= 0 ? 'var(--green)' : 'var(--red)'} />
-            <StatCard label="Mejor" value={result.stats.bestTrade ? formatPnl(result.stats.bestTrade.pnl) : '-'} color="var(--green)" />
-            <StatCard label="Peor" value={result.stats.worstTrade ? formatPnl(result.stats.worstTrade.pnl) : '-'} color="var(--red)" />
-            <StatCard label="Fees Totales" value={`$${(result.stats.totalFees || 0).toFixed(2)}`} color="var(--text-dim)" />
-            <StatCard label="Velas analizadas" value={result.stats.candlesAnalyzed} color="var(--text-dim)" />
-          </div>
+          <StatsGrid result={result} seguroOnly={seguroOnly} />
 
           {/* Equity Curve */}
           {result.equityCurve && result.equityCurve.length > 1 && (
@@ -263,9 +257,11 @@ export default function BacktestPage() {
           )}
 
           {/* Trades Table */}
-          {result.trades.length > 0 ? (
+          {(() => {
+            const filteredTrades = seguroOnly ? result.trades.filter(t => t.seguro) : result.trades;
+            return filteredTrades.length > 0 ? (
             <div style={{ background: 'var(--surface)', border: '1px solid var(--surface2)', borderRadius: 10, padding: '1rem' }}>
-              <h4 style={{ margin: '0 0 0.75rem 0', color: 'var(--text)', fontSize: '0.9rem' }}>Operaciones ({result.trades.length})</h4>
+              <h4 style={{ margin: '0 0 0.75rem 0', color: 'var(--text)', fontSize: '0.9rem' }}>Operaciones ({filteredTrades.length}{seguroOnly ? ' seguro' : ''})</h4>
               <SortableTable
                 columns={[
                   { key: 'openedAt', label: 'Apertura', render: v => formatTs(v, timezone) },
@@ -288,7 +284,7 @@ export default function BacktestPage() {
                   { key: 'seguro', label: 'Seguro', render: v => v ? <span style={{ color: 'var(--green)', fontWeight: 700 }}>SI</span> : '' },
                   { key: 'timeExit', label: 'T.Exit', render: v => v ? 'TIME' : '' },
                 ]}
-                data={[...result.trades].reverse()}
+                data={[...filteredTrades].reverse()}
                 emptyText="Sin operaciones"
               />
             </div>
@@ -296,7 +292,8 @@ export default function BacktestPage() {
             <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-dim)', background: 'var(--surface)', borderRadius: 10, border: '1px solid var(--surface2)' }}>
               No se generaron operaciones en este periodo. Prueba con otro rango de fechas o ajusta los umbrales RSI.
             </div>
-          )}
+          );
+          })()}
         </div>
       )}
     </div>
@@ -310,6 +307,36 @@ function Field({ label, children, inline }) {
     <div style={inline ? { display: 'flex', alignItems: 'center', gap: 4 } : {}}>
       <label style={{ fontSize: '0.7rem', color: 'var(--text-dim)', display: 'block', marginBottom: 2 }}>{label}</label>
       {children}
+    </div>
+  );
+}
+
+function StatsGrid({ result, seguroOnly }) {
+  const trades = seguroOnly ? result.trades.filter(t => t.seguro) : result.trades;
+  const wins = trades.filter(t => t.pnl > 0).length;
+  const totalPnl = trades.reduce((sum, t) => sum + t.pnl, 0);
+  const totalPnlPct = trades.reduce((sum, t) => sum + t.pnlPct, 0);
+  const totalFees = trades.reduce((sum, t) => sum + t.totalFees, 0);
+  const avgPnlPct = trades.length > 0 ? totalPnlPct / trades.length : 0;
+  const winRate = trades.length > 0 ? (wins / trades.length) * 100 : 0;
+  const best = trades.length > 0 ? trades.reduce((b, t) => t.pnl > b.pnl ? t : b) : null;
+  const worst = trades.length > 0 ? trades.reduce((w, t) => t.pnl < w.pnl ? t : w) : null;
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '0.75rem', marginBottom: '1.5rem' }}>
+      <StatCard label={seguroOnly ? 'Operaciones Seguro' : 'Operaciones'} value={trades.length} />
+      <StatCard label="Win Rate" value={`${winRate.toFixed(1)}%`}
+        color={winRate >= 50 ? 'var(--green)' : 'var(--red)'} />
+      <StatCard label="P&L Total" value={formatPnl(totalPnl)}
+        color={totalPnl >= 0 ? 'var(--green)' : 'var(--red)'} />
+      <StatCard label="P&L Total (%)" value={`${totalPnlPct.toFixed(2)}%`}
+        color={totalPnlPct >= 0 ? 'var(--green)' : 'var(--red)'} />
+      <StatCard label="P&L Medio" value={`${avgPnlPct.toFixed(2)}%`}
+        color={avgPnlPct >= 0 ? 'var(--green)' : 'var(--red)'} />
+      <StatCard label="Mejor" value={best ? formatPnl(best.pnl) : '-'} color="var(--green)" />
+      <StatCard label="Peor" value={worst ? formatPnl(worst.pnl) : '-'} color="var(--red)" />
+      <StatCard label="Fees Totales" value={`$${totalFees.toFixed(2)}`} color="var(--text-dim)" />
+      {!seguroOnly && <StatCard label="Velas analizadas" value={result.stats.candlesAnalyzed} color="var(--text-dim)" />}
     </div>
   );
 }

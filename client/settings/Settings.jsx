@@ -37,6 +37,7 @@ export default function Settings() {
       </div>
 
       <GenericAlertsSection settings={settings} onUpdate={load} onMsg={setMsg} />
+      <SeguroSection settings={settings} onUpdate={load} onMsg={setMsg} />
       <TokenAlertsSection settings={settings} onUpdate={load} onMsg={setMsg} />
       <SimulationSection settings={settings} onUpdate={load} onMsg={setMsg} />
     </div>
@@ -351,6 +352,61 @@ function GenericAlertsSection({ settings, onUpdate, onMsg }) {
       </Row>
       <button className="btn btn-primary btn-sm" onClick={save} disabled={loading} style={{ marginTop: '0.5rem' }}>
         Guardar Alertas Genericas
+      </button>
+    </Section>
+  );
+}
+
+// ============================================================
+// Seguro Config
+// ============================================================
+
+function SeguroSection({ settings, onUpdate, onMsg }) {
+  const sg = settings.seguro || {};
+  const [maxBelow1h, setMaxBelow1h] = useState(sg.maxBelow1h ?? 0.5);
+  const [maxBelow4h, setMaxBelow4h] = useState(sg.maxBelow4h ?? 4.25);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const s = settings.seguro || {};
+    setMaxBelow1h(s.maxBelow1h ?? 0.5);
+    setMaxBelow4h(s.maxBelow4h ?? 4.25);
+  }, [settings]);
+
+  async function save() {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/settings', {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ seguro: { maxBelow1h: Number(maxBelow1h), maxBelow4h: Number(maxBelow4h) } }),
+      });
+      const data = await res.json();
+      if (data.success) { onMsg({ type: 'ok', text: 'Seguro guardado' }); onUpdate(); }
+      else onMsg({ type: 'error', text: data.error || 'Error' });
+    } catch (e) { onMsg({ type: 'error', text: e.message }); }
+    finally { setLoading(false); }
+  }
+
+  return (
+    <Section title="Seguro (Safe Zone)">
+      <p className="section-desc">
+        Una operacion es "segura" cuando el precio esta como maximo X% bajo la SMA200 de 1h y como maximo Y% bajo la SMA200 de 4h.
+        Afecta al simulador y al backtest.
+      </p>
+      <Row label={`Max % bajo SMA200 1h (${maxBelow1h}%)`}>
+        <input type="range" min="0" max="5" step="0.1" value={maxBelow1h}
+          onChange={e => setMaxBelow1h(parseFloat(e.target.value))} style={{ width: 150 }} />
+      </Row>
+      <Row label={`Max % bajo SMA200 4h (${maxBelow4h}%)`}>
+        <input type="range" min="0" max="15" step="0.25" value={maxBelow4h}
+          onChange={e => setMaxBelow4h(parseFloat(e.target.value))} style={{ width: 150 }} />
+      </Row>
+      <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', marginTop: 4, marginBottom: '0.5rem' }}>
+        Condicion: precio &le; SMA200 1h &times; {((100 - maxBelow1h) / 100).toFixed(3)} &nbsp; AND &nbsp; precio &ge; SMA200 4h &times; {((100 - maxBelow4h) / 100).toFixed(4)}
+      </div>
+      <button className="btn btn-primary btn-sm" onClick={save} disabled={loading}>
+        Guardar Configuracion Seguro
       </button>
     </Section>
   );
