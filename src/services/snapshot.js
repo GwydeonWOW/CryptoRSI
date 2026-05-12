@@ -227,11 +227,17 @@ async function collectSnapshot(dispatchAlertsFn) {
           try {
             const { candles: hourlyCandles } = await fetchCandles(token.symbol, '1h', 250);
             sma200_1h = calculateSMA(hourlyCandles.map(c => c.close), 200);
-          } catch (e) { /* SMA 1h unavailable */ }
+            if (!sma200_1h) logger.info({ symbol: token.symbol }, 'SMA200 1h null (insufficient candles)');
+          } catch (e) {
+            logger.info({ symbol: token.symbol, err: e.message }, 'SMA 1h fetch failed');
+          }
           try {
             const { candles: fourHCandles } = await fetchCandles(token.symbol, '4h', 250);
             sma200_4h = calculateSMA(fourHCandles.map(c => c.close), 200);
-          } catch (e) { /* SMA 4h unavailable */ }
+            if (!sma200_4h) logger.info({ symbol: token.symbol }, 'SMA200 4h null (insufficient candles)');
+          } catch (e) {
+            logger.info({ symbol: token.symbol, err: e.message }, 'SMA 4h fetch failed');
+          }
 
           return {
             symbol: token.symbol, name: token.name, price, sma200_1h, sma200_4h,
