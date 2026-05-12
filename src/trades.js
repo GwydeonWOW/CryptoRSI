@@ -13,7 +13,7 @@ function _getRSIData(rsiData, price) {
     ? (price <= sma200_1h * 0.995 && price >= sma200_4h * 0.9575)
     : false;
   const rsi = typeof rsiData === 'object' && rsiData !== null
-    ? { rsi15m: rsiData.rsi15m ?? null, rsi1h: rsiData.rsi1h ?? null, rsi4h: rsiData.rsi4h ?? null, rsi1d: rsiData.rsi1d ?? null, sma200_1h, sma200_4h, seguro, signalRSI }
+    ? { rsi15m: rsiData.rsi15m ?? null, rsi1h: rsiData.rsi1h ?? null, rsi4h: rsiData.rsi4h ?? null, rsi1d: rsiData.rsi1d ?? null, sma200: sma200_1h, sma200_1h, sma200_4h, seguro, signalRSI }
     : { signalRSI };
   return { signalRSI, rsi, seguro };
 }

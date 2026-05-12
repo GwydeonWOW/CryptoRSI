@@ -230,6 +230,10 @@ async function collectSnapshot(dispatchAlertsFn) {
             if (!sma200_1h) logger.info({ symbol: token.symbol }, 'SMA200 1h null (insufficient candles)');
           } catch (e) {
             logger.info({ symbol: token.symbol, err: e.message }, 'SMA 1h fetch failed');
+            try {
+              const { candles: hourlyCandles } = await fetchCandles(token.symbol, '1h', 250);
+              sma200_1h = calculateSMA(hourlyCandles.map(c => c.close), 200);
+            } catch (e2) { /* retry failed */ }
           }
           try {
             const { candles: fourHCandles } = await fetchCandles(token.symbol, '4h', 250);
@@ -237,6 +241,10 @@ async function collectSnapshot(dispatchAlertsFn) {
             if (!sma200_4h) logger.info({ symbol: token.symbol }, 'SMA200 4h null (insufficient candles)');
           } catch (e) {
             logger.info({ symbol: token.symbol, err: e.message }, 'SMA 4h fetch failed');
+            try {
+              const { candles: fourHCandles } = await fetchCandles(token.symbol, '4h', 250);
+              sma200_4h = calculateSMA(fourHCandles.map(c => c.close), 200);
+            } catch (e2) { /* retry failed */ }
           }
 
           return {
