@@ -28,6 +28,8 @@ export default function BacktestPage() {
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [seguroOnly, setSeguroOnly] = useState(false);
+  const [multiMode, setMultiMode] = useState(false);
+  const [selectedSymbols, setSelectedSymbols] = useState([]);
 
   const now = new Date();
   const [form, setForm] = useState({
@@ -84,27 +86,63 @@ export default function BacktestPage() {
     }));
   }
 
+  function toggleSymbol(sym) {
+    setSelectedSymbols(prev =>
+      prev.includes(sym) ? prev.filter(s => s !== sym) : [...prev, sym]
+    );
+  }
+
+  function toggleAllSymbols() {
+    if (selectedSymbols.length === tokens.length) {
+      setSelectedSymbols([]);
+    } else {
+      setSelectedSymbols(tokens.map(t => t.symbol));
+    }
+  }
+
   async function runBacktest() {
-    if (!form.symbol) { addToast('error', 'Selecciona un token'); return; }
+    if (multiMode) {
+      if (selectedSymbols.length === 0) { addToast('error', 'Selecciona al menos 2 tokens'); return; }
+      if (selectedSymbols.length < 2) { addToast('error', 'Selecciona al menos 2 tokens para multi-backtest'); return; }
+    } else {
+      if (!form.symbol) { addToast('error', 'Selecciona un token'); return; }
+    }
     setLoading(true);
     setResult(null);
     setSeguroOnly(false);
     try {
-      // Send timestamps in user's local timezone so the backend
-      // uses the correct date range regardless of server timezone
       const [fy, fm, fd] = form.fromDate.split('-').map(Number);
       const [ty, tm, td] = form.toDate.split('-').map(Number);
       const startMs = new Date(fy, fm - 1, fd).getTime();
       const endMs = new Date(ty, tm - 1, td, 23, 59, 59, 999).getTime();
 
-      const res = await fetch('/api/backtest/run', {
+      const body = {
+        ...form,
+        startMs,
+        endMs,
+        minDelay: (form.minDelay || 0) * 3600000,
+        maxBuys: form.maxBuys || 0,
+        timeExitHours: form.timeExitHours || 0,
+        timeExitRSI: form.timeExitRSI || 50,
+      };
+
+      const endpoint = multiMode ? '/api/backtest/run-multi' : '/api/backtest/run';
+      if (multiMode) {
+        body.symbols = selectedSymbols;
+        delete body.symbol;
+      }
+
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: getAuthHeaders(),
-        body: JSON.stringify({ ...form, startMs, endMs, minDelay: (form.minDelay || 0) * 3600000, maxBuys: form.maxBuys || 0, timeExitHours: form.timeExitHours || 0, timeExitRSI: form.timeExitRSI || 50 }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (!res.ok) { addToast('error', data.error); return; }
       setResult(data);
+      if (data.errors?.length > 0) {
+        addToast('error', `Algunos tokens fallaron: ${data.errors.map(e => `${e.symbol}: ${e.error}`).join('; ')}`);
+      }
     } catch (e) {
       addToast('error', e.message);
     } finally {
@@ -113,6 +151,7 @@ export default function BacktestPage() {
   }
 
   const update = (key, val) => setForm(f => ({ ...f, [key]: val }));
+  const isMulti = result && result.bySymbol;
 
   return (
     <div>
@@ -123,47 +162,92 @@ export default function BacktestPage() {
       }}>
         <h3 className="section-title" style={{ marginBottom: '1rem' }}>Configuracion del Backtest</h3>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '0.8rem', marginBottom: '1rem' }}>
-          {/* Symbol */}
-          <Field label="Token">
-            <select value={form.symbol} onChange={e => update('symbol', e.target.value)} style={inputStyle}>
-              <option value="">Seleccionar...</option>
-              {tokens.map(t => <option key={t.symbol} value={t.symbol}>{t.symbol}</option>)}
-            </select>
-          </Field>
+        {/* Mode toggle */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: '1rem', padding: '0.5rem 0.75rem', background: 'var(--bg)', borderRadius: 8, border: '1px solid var(--surface2)' }}>
+          <button onClick={() => setMultiMode(false)} style={{
+            padding: '0.4rem 1rem', borderRadius: 6, fontSize: '0.8rem', fontWeight: multiMode ? 400 : 600,
+            background: multiMode ? 'transparent' : 'var(--blue)', color: multiMode ? 'var(--text-dim)' : 'white',
+            border: 'none', cursor: 'pointer',
+          }}>
+            Unico Token
+          </button>
+          <button onClick={() => setMultiMode(true)} style={{
+            padding: '0.4rem 1rem', borderRadius: 6, fontSize: '0.8rem', fontWeight: multiMode ? 600 : 400,
+            background: multiMode ? 'var(--blue)' : 'transparent', color: multiMode ? 'white' : 'var(--text-dim)',
+            border: 'none', cursor: 'pointer',
+          }}>
+            Multi Token
+          </button>
+        </div>
 
-          {/* Timeframe */}
+        {/* Token selector */}
+        {multiMode ? (
+          <div style={{ marginBottom: '1rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: '0.5rem' }}>
+              <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-dim)' }}>
+                Tokens ({selectedSymbols.length}/{tokens.length})
+              </span>
+              <button onClick={toggleAllSymbols} style={{
+                fontSize: '0.7rem', padding: '0.15rem 0.5rem', background: 'var(--surface2)',
+                border: 'none', borderRadius: 4, color: 'var(--text-dim)', cursor: 'pointer',
+              }}>
+                {selectedSymbols.length === tokens.length ? 'Ninguno' : 'Todos'}
+              </button>
+            </div>
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+              {tokens.map(t => {
+                const sel = selectedSymbols.includes(t.symbol);
+                return (
+                  <button key={t.symbol} onClick={() => toggleSymbol(t.symbol)} style={{
+                    padding: '0.3rem 0.75rem', borderRadius: 6, fontSize: '0.8rem',
+                    background: sel ? 'rgba(59,130,246,0.15)' : 'var(--bg)',
+                    border: sel ? '1px solid rgba(59,130,246,0.4)' : '1px solid var(--surface2)',
+                    color: sel ? 'var(--blue)' : 'var(--text-dim)', cursor: 'pointer', fontWeight: sel ? 600 : 400,
+                  }}>
+                    {t.symbol}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '0.8rem', marginBottom: '1rem' }}>
+          {!multiMode && (
+            <Field label="Token">
+              <select value={form.symbol} onChange={e => update('symbol', e.target.value)} style={inputStyle}>
+                <option value="">Seleccionar...</option>
+                {tokens.map(t => <option key={t.symbol} value={t.symbol}>{t.symbol}</option>)}
+              </select>
+            </Field>
+          )}
+
           <Field label="Timeframe">
             <select value={form.timeframe} onChange={e => update('timeframe', e.target.value)} style={inputStyle}>
               {TIMEFRAME_OPTIONS.map(tf => <option key={tf.value} value={tf.value}>{tf.label}</option>)}
             </select>
           </Field>
 
-          {/* Amount */}
           <Field label="Monto ($)">
             <input type="number" value={form.amount} onChange={e => update('amount', Number(e.target.value))}
               min={10} step={100} style={inputStyle} />
           </Field>
 
-          {/* Fee */}
           <Field label="Fee (%)">
             <input type="number" value={form.feePercent} onChange={e => update('feePercent', Number(e.target.value))}
               min={0} max={10} step={0.001} style={inputStyle} />
           </Field>
 
-          {/* RSI Oversold */}
           <Field label="RSI Compra (<=)">
             <input type="number" value={form.rsiOversold} onChange={e => update('rsiOversold', Number(e.target.value))}
               min={1} max={100} step={1} style={inputStyle} />
           </Field>
 
-          {/* RSI Overbought */}
           <Field label="RSI Venta (>=)">
             <input type="number" value={form.rsiOverbought} onChange={e => update('rsiOverbought', Number(e.target.value))}
               min={1} max={100} step={1} style={inputStyle} />
           </Field>
 
-          {/* Multi-buy */}
           <Field label="Multi-compra">
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
               <input type="checkbox" checked={form.allowMultiple} onChange={e => update('allowMultiple', e.target.checked)}
@@ -172,31 +256,26 @@ export default function BacktestPage() {
             </div>
           </Field>
 
-          {/* Max investment */}
-          <Field label="Inversion Max ($)">
+          <Field label={multiMode ? 'Inversion Max Total ($)' : 'Inversion Max ($)'}>
             <input type="number" value={form.maxInvestment || ''} onChange={e => update('maxInvestment', Number(e.target.value))}
               min={0} step={1000} placeholder="Sin limite" style={inputStyle} />
           </Field>
 
-          {/* Max buys */}
           <Field label="Max Compras">
             <input type="number" value={form.maxBuys || ''} onChange={e => update('maxBuys', Number(e.target.value))}
               min={0} step={1} placeholder="Sin limite" style={inputStyle} />
           </Field>
 
-          {/* Min delay */}
           <Field label="Delay Min (h)">
             <input type="number" value={form.minDelay || ''} onChange={e => update('minDelay', Number(e.target.value))}
               min={0} step={1} placeholder="Sin delay" style={inputStyle} />
           </Field>
 
-          {/* Time Exit Hours */}
           <Field label="Time Exit (h)">
             <input type="number" value={form.timeExitHours || ''} onChange={e => update('timeExitHours', Number(e.target.value))}
               min={0} step={1} placeholder="Sin limite" style={inputStyle} />
           </Field>
 
-          {/* Time Exit RSI */}
           <Field label="RSI Time Exit (>=)">
             <input type="number" value={form.timeExitRSI || ''} onChange={e => update('timeExitRSI', Number(e.target.value))}
               min={1} max={100} step={1} placeholder="50" style={inputStyle} />
@@ -219,88 +298,195 @@ export default function BacktestPage() {
           ))}
         </div>
 
-        <button className="btn btn-primary" onClick={runBacktest} disabled={loading || !form.symbol}
+        <button className="btn btn-primary" onClick={runBacktest}
+          disabled={loading || (multiMode ? selectedSymbols.length < 2 : !form.symbol)}
           style={{ padding: '0.5rem 2rem' }}>
-          {loading ? 'Ejecutando...' : 'Ejecutar Backtest'}
+          {loading ? 'Ejecutando...' : multiMode ? `Ejecutar Multi-Backtest (${selectedSymbols.length} tokens)` : 'Ejecutar Backtest'}
         </button>
       </div>
 
-      {loading && <Loading text="Ejecutando backtest..." />}
+      {loading && <Loading text={multiMode ? 'Ejecutando multi-backtest...' : 'Ejecutando backtest...'} />}
 
       {/* Results */}
-      {result && (
-        <div>
-          {/* Export buttons + Seguro filter */}
-          {result.trades.length > 0 && (
-            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
-              <button className="btn btn-sm" onClick={() => exportCSV(seguroOnly ? { ...result, trades: result.trades.filter(t => t.seguro) } : result, form, timezone)}
-                style={{ padding: '0.4rem 1rem', background: 'var(--surface2)', color: 'var(--text)', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: '0.8rem' }}>
-                Exportar CSV{seguroOnly ? ' (solo seguro)' : ''}
-              </button>
-              {result.trades.some(t => t.seguro) && (
-                <button className="btn btn-sm" onClick={() => setSeguroOnly(!seguroOnly)}
-                  style={{ padding: '0.4rem 1rem', background: seguroOnly ? 'rgba(34,197,94,0.15)' : 'var(--surface2)', color: seguroOnly ? 'var(--green)' : 'var(--text-dim)', border: seguroOnly ? '1px solid rgba(34,197,94,0.4)' : 'none', borderRadius: 6, cursor: 'pointer', fontSize: '0.8rem', fontWeight: seguroOnly ? 600 : 400 }}>
-                  Solo Seguro{seguroOnly ? ` (${result.trades.filter(t => t.seguro).length})` : ''}
-                </button>
-              )}
-            </div>
-          )}
-          {/* Stats Cards */}
-          <StatsGrid result={result} seguroOnly={seguroOnly} />
-
-          {/* Equity Curve */}
-          {result.equityCurve && result.equityCurve.length > 1 && (
-            <div style={{ background: 'var(--surface)', border: '1px solid var(--surface2)', borderRadius: 10, padding: '1rem', marginBottom: '1.5rem' }}>
-              <h4 style={{ margin: '0 0 0.75rem 0', color: 'var(--text)', fontSize: '0.9rem' }}>Curva de Equity</h4>
-              <EquityChart data={result.equityCurve} trades={result.trades} totalPnl={result.stats.totalPnl} />
-            </div>
-          )}
-
-          {/* Trades Table */}
-          {(() => {
-            const filteredTrades = seguroOnly ? result.trades.filter(t => t.seguro) : result.trades;
-            return filteredTrades.length > 0 ? (
-            <div style={{ background: 'var(--surface)', border: '1px solid var(--surface2)', borderRadius: 10, padding: '1rem' }}>
-              <h4 style={{ margin: '0 0 0.75rem 0', color: 'var(--text)', fontSize: '0.9rem' }}>Operaciones ({filteredTrades.length}{seguroOnly ? ' seguro' : ''})</h4>
-              <SortableTable
-                columns={[
-                  { key: 'openedAt', label: 'Apertura', render: v => formatTs(v, timezone) },
-                  { key: 'closedAt', label: 'Cierre', render: v => formatTs(v, timezone) },
-                  { key: 'duration', label: 'Duracion', render: v => formatDuration(v) },
-                  { key: 'entryPrice', label: 'P. Compra', render: v => v != null ? `$${formatPrice(v)}` : '-' },
-                  { key: 'exitPrice', label: 'P. Venta', render: v => v != null ? `$${formatPrice(v)}` : '-' },
-                  { key: 'amount', label: 'Inversion', render: v => `$${v?.toFixed(2)}` },
-                  { key: 'rsiAtOpen', label: 'RSI Compra', render: v => v?.toFixed(1) ?? '-' },
-                  { key: 'rsiAtClose', label: 'RSI Venta', render: v => v?.toFixed(1) ?? '-' },
-                  { key: 'pnl', label: 'P&L ($)', render: v => (
-                    <span style={{ color: v >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 600 }}>{formatPnl(v)}</span>
-                  )},
-                  { key: 'pnlPct', label: 'P&L (%)', render: v => (
-                    <span style={{ color: v >= 0 ? 'var(--green)' : 'var(--red)' }}>{v?.toFixed(2)}%</span>
-                  )},
-                  { key: 'totalFees', label: 'Fees', render: v => v ? `$${v.toFixed(2)}` : '-' },
-                  { key: 'sma200_1h', label: 'SMA200 1h', render: v => v != null ? `$${formatPrice(v)}` : '-' },
-                  { key: 'sma200_4h', label: 'SMA200 4h', render: v => v != null ? `$${formatPrice(v)}` : '-' },
-                  { key: 'seguro', label: 'Seguro', render: v => v ? <span style={{ color: 'var(--green)', fontWeight: 700 }}>SI</span> : '' },
-                  { key: 'timeExit', label: 'T.Exit', render: v => v ? 'TIME' : '' },
-                ]}
-                data={[...filteredTrades].reverse()}
-                emptyText="Sin operaciones"
-              />
-            </div>
-          ) : (
-            <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-dim)', background: 'var(--surface)', borderRadius: 10, border: '1px solid var(--surface2)' }}>
-              No se generaron operaciones en este periodo. Prueba con otro rango de fechas o ajusta los umbrales RSI.
-            </div>
-          );
-          })()}
-        </div>
+      {result && !isMulti && (
+        <SingleResults result={result} seguroOnly={seguroOnly} setSeguroOnly={setSeguroOnly} form={form} timezone={timezone} />
+      )}
+      {result && isMulti && (
+        <MultiResults result={result} seguroOnly={seguroOnly} setSeguroOnly={setSeguroOnly} form={form} timezone={timezone} />
       )}
     </div>
   );
 }
 
-// --- Components ---
+// ============================================================
+// Single-token results (unchanged)
+// ============================================================
+
+function SingleResults({ result, seguroOnly, setSeguroOnly, form, timezone }) {
+  return (
+    <div>
+      {result.trades.length > 0 && (
+        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          <button className="btn btn-sm" onClick={() => exportCSV(seguroOnly ? { ...result, trades: result.trades.filter(t => t.seguro) } : result, form, timezone, false)}
+            style={{ padding: '0.4rem 1rem', background: 'var(--surface2)', color: 'var(--text)', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: '0.8rem' }}>
+            Exportar CSV{seguroOnly ? ' (solo seguro)' : ''}
+          </button>
+          {result.trades.some(t => t.seguro) && (
+            <button className="btn btn-sm" onClick={() => setSeguroOnly(!seguroOnly)}
+              style={{ padding: '0.4rem 1rem', background: seguroOnly ? 'rgba(34,197,94,0.15)' : 'var(--surface2)', color: seguroOnly ? 'var(--green)' : 'var(--text-dim)', border: seguroOnly ? '1px solid rgba(34,197,94,0.4)' : 'none', borderRadius: 6, cursor: 'pointer', fontSize: '0.8rem', fontWeight: seguroOnly ? 600 : 400 }}>
+              Solo Seguro{seguroOnly ? ` (${result.trades.filter(t => t.seguro).length})` : ''}
+            </button>
+          )}
+        </div>
+      )}
+      <StatsGrid result={result} seguroOnly={seguroOnly} />
+      {result.equityCurve && result.equityCurve.length > 1 && (
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--surface2)', borderRadius: 10, padding: '1rem', marginBottom: '1.5rem' }}>
+          <h4 style={{ margin: '0 0 0.75rem 0', color: 'var(--text)', fontSize: '0.9rem' }}>Curva de Equity</h4>
+          <EquityChart data={result.equityCurve} trades={result.trades} totalPnl={result.stats.totalPnl} />
+        </div>
+      )}
+      <TradesTable trades={result.trades} seguroOnly={seguroOnly} timezone={timezone} showSymbol={false} />
+    </div>
+  );
+}
+
+// ============================================================
+// Multi-token results
+// ============================================================
+
+function MultiResults({ result, seguroOnly, setSeguroOnly, form, timezone }) {
+  const allTrades = result.trades;
+  const combined = result.combined;
+  const bySymbol = result.bySymbol;
+  const symbols = Object.keys(bySymbol);
+
+  return (
+    <div>
+      {/* Export + Seguro filter */}
+      {allTrades.length > 0 && (
+        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          <button className="btn btn-sm" onClick={() => exportCSV(seguroOnly ? { ...result, trades: allTrades.filter(t => t.seguro) } : result, form, timezone, true)}
+            style={{ padding: '0.4rem 1rem', background: 'var(--surface2)', color: 'var(--text)', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: '0.8rem' }}>
+            Exportar CSV{seguroOnly ? ' (solo seguro)' : ''}
+          </button>
+          {allTrades.some(t => t.seguro) && (
+            <button className="btn btn-sm" onClick={() => setSeguroOnly(!seguroOnly)}
+              style={{ padding: '0.4rem 1rem', background: seguroOnly ? 'rgba(34,197,94,0.15)' : 'var(--surface2)', color: seguroOnly ? 'var(--green)' : 'var(--text-dim)', border: seguroOnly ? '1px solid rgba(34,197,94,0.4)' : 'none', borderRadius: 6, cursor: 'pointer', fontSize: '0.8rem', fontWeight: seguroOnly ? 600 : 400 }}>
+              Solo Seguro{seguroOnly ? ` (${allTrades.filter(t => t.seguro).length})` : ''}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Combined stats */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '0.75rem', marginBottom: '1.5rem' }}>
+        <StatCard label="Tokens" value={symbols.length} />
+        <StatCard label="Operaciones" value={combined.totalTrades} />
+        <StatCard label="Win Rate" value={`${combined.winRate.toFixed(1)}%`}
+          color={combined.winRate >= 50 ? 'var(--green)' : 'var(--red)'} />
+        <StatCard label="P&L Total" value={formatPnl(combined.totalPnl)}
+          color={combined.totalPnl >= 0 ? 'var(--green)' : 'var(--red)'} />
+        <StatCard label="P&L Total (%)" value={`${combined.totalPnlPct.toFixed(2)}%`}
+          color={combined.totalPnlPct >= 0 ? 'var(--green)' : 'var(--red)'} />
+        <StatCard label="P&L Medio" value={`${combined.avgPnlPct.toFixed(2)}%`}
+          color={combined.avgPnlPct >= 0 ? 'var(--green)' : 'var(--red)'} />
+        <StatCard label="Mejor" value={combined.bestTrade ? formatPnl(combined.bestTrade.pnl) : '-'} color="var(--green)" />
+        <StatCard label="Peor" value={combined.worstTrade ? formatPnl(combined.worstTrade.pnl) : '-'} color="var(--red)" />
+        <StatCard label="Fees Totales" value={`$${combined.totalFees.toFixed(2)}`} color="var(--text-dim)" />
+      </div>
+
+      {/* Per-symbol comparison */}
+      {symbols.length > 0 && (
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--surface2)', borderRadius: 10, padding: '1rem', marginBottom: '1.5rem' }}>
+          <h4 style={{ margin: '0 0 0.75rem 0', color: 'var(--text)', fontSize: '0.9rem' }}>Comparativa por Token</h4>
+          <SortableTable
+            columns={[
+              { key: 'symbol', label: 'Token' },
+              { key: 'totalTrades', label: 'Trades' },
+              { key: 'wins', label: 'Wins' },
+              { key: 'losses', label: 'Losses' },
+              { key: 'winRate', label: 'Win Rate', render: v => `${v.toFixed(1)}%` },
+              { key: 'totalPnl', label: 'P&L', render: v => (
+                <span style={{ color: v >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 600 }}>{formatPnl(v)}</span>
+              )},
+              { key: 'totalPnlPct', label: 'P&L %', render: v => (
+                <span style={{ color: v >= 0 ? 'var(--green)' : 'var(--red)' }}>{v.toFixed(2)}%</span>
+              )},
+              { key: 'totalFees', label: 'Fees', render: v => `$${v.toFixed(2)}` },
+              { key: 'avgPnlPct', label: 'P&L Medio', render: v => (
+                <span style={{ color: v >= 0 ? 'var(--green)' : 'var(--red)' }}>{v.toFixed(2)}%</span>
+              )},
+            ]}
+            data={symbols.map(s => ({ symbol: s, ...bySymbol[s].stats })).sort((a, b) => b.totalPnl - a.totalPnl)}
+            emptyText="Sin datos"
+          />
+        </div>
+      )}
+
+      {/* Equity curve */}
+      {result.equityCurve && result.equityCurve.length > 1 && (
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--surface2)', borderRadius: 10, padding: '1rem', marginBottom: '1.5rem' }}>
+          <h4 style={{ margin: '0 0 0.75rem 0', color: 'var(--text)', fontSize: '0.9rem' }}>Curva de Equity Combinada</h4>
+          <EquityChart data={result.equityCurve} trades={allTrades} totalPnl={combined.totalPnl} />
+        </div>
+      )}
+
+      {/* All trades table */}
+      <TradesTable trades={allTrades} seguroOnly={seguroOnly} timezone={timezone} showSymbol={true} />
+    </div>
+  );
+}
+
+// ============================================================
+// Shared components
+// ============================================================
+
+function TradesTable({ trades, seguroOnly, timezone, showSymbol }) {
+  const filteredTrades = seguroOnly ? trades.filter(t => t.seguro) : trades;
+  if (filteredTrades.length === 0) {
+    return (
+      <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-dim)', background: 'var(--surface)', borderRadius: 10, border: '1px solid var(--surface2)' }}>
+        No se generaron operaciones en este periodo. Prueba con otro rango de fechas o ajusta los umbrales RSI.
+      </div>
+    );
+  }
+
+  const columns = [];
+  if (showSymbol) {
+    columns.push({ key: 'symbol', label: 'Token', render: v => <strong style={{ color: 'var(--blue)' }}>{v}</strong> });
+  }
+  columns.push(
+    { key: 'openedAt', label: 'Apertura', render: v => formatTs(v, timezone) },
+    { key: 'closedAt', label: 'Cierre', render: v => formatTs(v, timezone) },
+    { key: 'duration', label: 'Duracion', render: v => formatDuration(v) },
+    { key: 'entryPrice', label: 'P. Compra', render: v => v != null ? `$${formatPrice(v)}` : '-' },
+    { key: 'exitPrice', label: 'P. Venta', render: v => v != null ? `$${formatPrice(v)}` : '-' },
+    { key: 'amount', label: 'Inversion', render: v => `$${v?.toFixed(2)}` },
+    { key: 'rsiAtOpen', label: 'RSI Compra', render: v => v?.toFixed(1) ?? '-' },
+    { key: 'rsiAtClose', label: 'RSI Venta', render: v => v?.toFixed(1) ?? '-' },
+    { key: 'pnl', label: 'P&L ($)', render: v => (
+      <span style={{ color: v >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 600 }}>{formatPnl(v)}</span>
+    )},
+    { key: 'pnlPct', label: 'P&L (%)', render: v => (
+      <span style={{ color: v >= 0 ? 'var(--green)' : 'var(--red)' }}>{v?.toFixed(2)}%</span>
+    )},
+    { key: 'totalFees', label: 'Fees', render: v => v ? `$${v.toFixed(2)}` : '-' },
+    { key: 'sma200_1h', label: 'SMA200 1h', render: v => v != null ? `$${formatPrice(v)}` : '-' },
+    { key: 'sma200_4h', label: 'SMA200 4h', render: v => v != null ? `$${formatPrice(v)}` : '-' },
+    { key: 'seguro', label: 'Seguro', render: v => v ? <span style={{ color: 'var(--green)', fontWeight: 700 }}>SI</span> : '' },
+    { key: 'timeExit', label: 'T.Exit', render: v => v ? 'TIME' : '' },
+  );
+
+  return (
+    <div style={{ background: 'var(--surface)', border: '1px solid var(--surface2)', borderRadius: 10, padding: '1rem' }}>
+      <h4 style={{ margin: '0 0 0.75rem 0', color: 'var(--text)', fontSize: '0.9rem' }}>
+        Operaciones ({filteredTrades.length}{seguroOnly ? ' seguro' : ''})
+      </h4>
+      <SortableTable columns={columns} data={[...filteredTrades].reverse()} emptyText="Sin operaciones" />
+    </div>
+  );
+}
 
 function Field({ label, children, inline }) {
   return (
@@ -367,20 +553,15 @@ function EquityChart({ data, trades, totalPnl }) {
   }).join(' ');
 
   const color = totalPnl >= 0 ? 'var(--green)' : 'var(--red)';
-
-  // Find trade close timestamps for markers
   const tradeTimes = new Set(trades.map(t => t.closedAt));
 
   return (
     <svg viewBox={`0 0 ${w} ${h + 4}`} style={{ width: '100%', height: 180 }}>
-      {/* Zero line */}
       {min < 0 && max > 0 && (
         <line x1="0" y1={h - ((0 - min) / range) * h} x2={w} y2={h - ((0 - min) / range) * h}
           stroke="var(--surface2)" strokeWidth="0.3" strokeDasharray="1,1" />
       )}
-      {/* Area fill */}
       <polyline fill="none" stroke={color} strokeWidth="0.5" points={points} />
-      {/* Trade markers */}
       {data.filter(d => tradeTimes.has(d.timestamp)).map((d, i) => {
         const x = (data.indexOf(d) / (data.length - 1)) * w;
         const trade = trades.find(t => t.closedAt === d.timestamp);
@@ -428,9 +609,14 @@ function formatDuration(ms) {
   return `${Math.floor(ms / 60000)}m`;
 }
 
-function exportCSV(result, form, timezone) {
-  const headers = ['Apertura', 'Cierre', 'Duracion', 'P. Compra', 'P. Venta', 'Inversion', 'RSI Compra', 'RSI Venta', 'P&L ($)', 'P&L (%)', 'Fee Compra', 'Fee Venta', 'Fees Total', 'SMA200 1h', 'SMA200 4h', 'Seguro', 'Time Exit'];
-  const rows = result.trades.map(t => [
+function exportCSV(result, form, timezone, isMulti) {
+  const trades = result.trades;
+  const stats = isMulti ? result.combined : result.stats;
+  const symbolLabel = isMulti ? Object.keys(result.bySymbol || {}).join('+') : form.symbol;
+
+  const headers = ['Token', 'Apertura', 'Cierre', 'Duracion', 'P. Compra', 'P. Venta', 'Inversion', 'RSI Compra', 'RSI Venta', 'P&L ($)', 'P&L (%)', 'Fee Compra', 'Fee Venta', 'Fees Total', 'SMA200 1h', 'SMA200 4h', 'Seguro', 'Time Exit'];
+  const rows = trades.map(t => [
+    t.symbol || form.symbol,
     formatTs(t.openedAt, timezone),
     formatTs(t.closedAt, timezone),
     formatDuration(t.duration),
@@ -452,8 +638,8 @@ function exportCSV(result, form, timezone) {
 
   const summary = [
     '',
-    `Backtest: ${form.symbol} | ${form.timeframe} | ${form.fromDate} - ${form.toDate}`,
-    `Operaciones: ${result.stats.totalTrades} | Win Rate: ${result.stats.winRate.toFixed(1)}% | P&L Total: ${result.stats.totalPnl.toFixed(2)} | Fees Total: ${(result.stats.totalFees || 0).toFixed(2)}`,
+    `Backtest: ${symbolLabel} | ${form.timeframe} | ${form.fromDate} - ${form.toDate}`,
+    `Operaciones: ${stats.totalTrades} | Win Rate: ${stats.winRate.toFixed(1)}% | P&L Total: ${stats.totalPnl.toFixed(2)} | Fees Total: ${(stats.totalFees || 0).toFixed(2)}`,
   ];
 
   const csv = [headers.join(','), ...rows.map(r => r.join(',')), ...summary].join('\n');
@@ -461,7 +647,7 @@ function exportCSV(result, form, timezone) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `backtest_${form.symbol}_${form.timeframe}_${form.fromDate}_${form.toDate}.csv`;
+  a.download = `backtest_${symbolLabel}_${form.timeframe}_${form.fromDate}_${form.toDate}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }

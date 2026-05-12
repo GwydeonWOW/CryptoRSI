@@ -349,6 +349,216 @@ function simulateBacktest(candles, config, startMs, sma200Data) {
 }
 
 // ============================================================
+// Multi-Token Simulation
+// ============================================================
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+function simulateMultiBacktest(candlesBySymbol, sma200BySymbol, config, startMs) {
+  const {
+    amount = 1000,
+    feePercent = 0,
+    rsiOversold = 30,
+    rsiOverbought = 70,
+    rsiPeriod = 14,
+    allowMultiple = false,
+    maxInvestment = 0,
+    minDelay = 0,
+    maxBuys = 0,
+    timeExitHours = 0,
+    timeExitRSI = 50,
+    seguro = {},
+  } = config;
+
+  const feeMultiplier = 1 - (feePercent / 100);
+  const timeExitMs = timeExitHours * 3600000;
+  const symbols = Object.keys(candlesBySymbol);
+
+  // Pre-calculate RSI per symbol and build merged event stream
+  const events = [];
+  for (const symbol of symbols) {
+    const candles = candlesBySymbol[symbol];
+    const closes = candles.map(c => c.close);
+    const rsiValues = calculateRSI(closes, rsiPeriod);
+
+    for (let i = rsiPeriod; i < candles.length; i++) {
+      const rsi = rsiValues[i - rsiPeriod];
+      if (rsi === null || rsi === undefined) continue;
+      if (candles[i].timestamp < startMs) continue;
+      events.push({
+        timestamp: candles[i].timestamp,
+        symbol,
+        price: candles[i].close,
+        rsi,
+      });
+    }
+  }
+
+  // Sort chronologically, break ties alphabetically by symbol
+  events.sort((a, b) => a.timestamp - b.timestamp || a.symbol.localeCompare(b.symbol));
+
+  // Simulation state
+  const positionsBySymbol = {};
+  const lastBuyBySymbol = {};
+  for (const s of symbols) {
+    positionsBySymbol[s] = [];
+    lastBuyBySymbol[s] = 0;
+  }
+
+  const trades = [];
+  let equity = 0;
+  const equityCurve = [];
+  const lastPriceBySymbol = {};
+
+  for (const event of events) {
+    const { timestamp, symbol, price, rsi } = event;
+    lastPriceBySymbol[symbol] = price;
+    const positions = positionsBySymbol[symbol];
+
+    const sma200_1h = findNearestSMA(sma200BySymbol?.[symbol]?.['1h'], timestamp);
+    const sma200_4h = findNearestSMA(sma200BySymbol?.[symbol]?.['4h'], timestamp);
+    const filterData = { price, sma200_1h, sma200_4h, rsi };
+    const seguroLabel = evaluateConditions(seguro.conditions, seguro.logic, filterData);
+    const passesSeguroFilter = seguro.filterEntries
+      ? !shouldSkip({ enabled: true, action: seguro.filterAction || 'skip', logic: seguro.logic, conditions: seguro.conditions }, filterData)
+      : true;
+
+    // BUY
+    const canBuy = allowMultiple || positions.length === 0;
+    const withinDelay = !minDelay || timestamp - lastBuyBySymbol[symbol] >= minDelay;
+    const totalOpenInvested = Object.values(positionsBySymbol).flat().reduce((sum, p) => sum + p.amount, 0);
+    const withinBudget = !maxInvestment || totalOpenInvested + amount <= maxInvestment;
+    const withinMaxBuys = !maxBuys || positions.length < maxBuys;
+
+    if (rsi <= rsiOversold && canBuy && withinDelay && withinBudget && withinMaxBuys && passesSeguroFilter) {
+      const feeBuy = amount * (feePercent / 100);
+      const effectiveAmount = amount * feeMultiplier;
+      const quantity = effectiveAmount / price;
+      positions.push({
+        entryPrice: price, amount, quantity, feeBuy,
+        rsiAtOpen: rsi, openedAt: timestamp,
+        sma200_1h, sma200_4h, seguro: seguroLabel, symbol,
+      });
+      lastBuyBySymbol[symbol] = timestamp;
+    }
+
+    // Time-based exit
+    if (timeExitMs > 0 && positions.length > 0) {
+      const remaining = [];
+      for (const pos of positions) {
+        const duration = timestamp - pos.openedAt;
+        if (duration >= timeExitMs && rsi >= timeExitRSI) {
+          const grossExit = pos.quantity * price;
+          const feeSell = grossExit * (feePercent / 100);
+          const exitValue = grossExit * feeMultiplier;
+          const pnl = exitValue - pos.amount;
+          const pnlPct = (pnl / pos.amount) * 100;
+          trades.push({
+            symbol, entryPrice: pos.entryPrice, exitPrice: price,
+            amount: pos.amount, quantity: pos.quantity,
+            exitValue, pnl, pnlPct,
+            feeBuy: pos.feeBuy, feeSell, totalFees: pos.feeBuy + feeSell,
+            sma200_1h: pos.sma200_1h, sma200_4h: pos.sma200_4h, seguro: pos.seguro,
+            rsiAtOpen: pos.rsiAtOpen, rsiAtClose: rsi,
+            openedAt: pos.openedAt, closedAt: timestamp,
+            duration: timestamp - pos.openedAt, timeExit: true,
+          });
+          equity += pnl;
+        } else {
+          remaining.push(pos);
+        }
+      }
+      positionsBySymbol[symbol] = remaining;
+    }
+
+    // SELL
+    const currentPositions = positionsBySymbol[symbol];
+    if (rsi >= rsiOverbought && currentPositions.length > 0) {
+      for (const pos of currentPositions) {
+        const grossExit = pos.quantity * price;
+        const feeSell = grossExit * (feePercent / 100);
+        const exitValue = grossExit * feeMultiplier;
+        const pnl = exitValue - pos.amount;
+        const pnlPct = (pnl / pos.amount) * 100;
+        trades.push({
+          symbol, entryPrice: pos.entryPrice, exitPrice: price,
+          amount: pos.amount, quantity: pos.quantity,
+          exitValue, pnl, pnlPct,
+          feeBuy: pos.feeBuy, feeSell, totalFees: pos.feeBuy + feeSell,
+          sma200_1h: pos.sma200_1h, sma200_4h: pos.sma200_4h, seguro: pos.seguro,
+          rsiAtOpen: pos.rsiAtOpen, rsiAtClose: rsi,
+          openedAt: pos.openedAt, closedAt: timestamp,
+          duration: timestamp - pos.openedAt,
+        });
+        equity += pnl;
+      }
+      positionsBySymbol[symbol] = [];
+    }
+
+    // Equity curve (sampled)
+    const totalOpenPnl = Object.entries(positionsBySymbol).reduce((sum, [sym, posArr]) => {
+      const symPrice = lastPriceBySymbol[sym] || 0;
+      return sum + posArr.reduce((s, p) => s + (p.quantity * symPrice - p.amount), 0);
+    }, 0);
+    equityCurve.push({ timestamp, equity: equity + totalOpenPnl });
+  }
+
+  // Downsample equity curve
+  const sampledCurve = equityCurve.length > 500
+    ? equityCurve.filter((_, i) => i % Math.ceil(equityCurve.length / 500) === 0)
+    : equityCurve;
+
+  // Compute per-symbol stats
+  const bySymbol = {};
+  for (const symbol of symbols) {
+    const symTrades = trades.filter(t => t.symbol === symbol);
+    const wins = symTrades.filter(t => t.pnl > 0).length;
+    const totalPnl = symTrades.reduce((sum, t) => sum + t.pnl, 0);
+    const totalPnlPct = symTrades.reduce((sum, t) => sum + t.pnlPct, 0);
+    const totalFees = symTrades.reduce((sum, t) => sum + t.totalFees, 0);
+    bySymbol[symbol] = {
+      trades: symTrades,
+      stats: {
+        totalTrades: symTrades.length,
+        wins,
+        losses: symTrades.length - wins,
+        winRate: symTrades.length > 0 ? (wins / symTrades.length) * 100 : 0,
+        totalPnl,
+        totalPnlPct,
+        totalFees,
+        avgPnlPct: symTrades.length > 0 ? totalPnlPct / symTrades.length : 0,
+      },
+    };
+  }
+
+  // Combined stats
+  const wins = trades.filter(t => t.pnl > 0).length;
+  const totalPnl = trades.reduce((sum, t) => sum + t.pnl, 0);
+  const totalPnlPct = trades.reduce((sum, t) => sum + t.pnlPct, 0);
+  const totalFees = trades.reduce((sum, t) => sum + t.totalFees, 0);
+  const bestTrade = trades.length > 0 ? trades.reduce((b, t) => t.pnl > b.pnl ? t : b) : null;
+  const worstTrade = trades.length > 0 ? trades.reduce((w, t) => t.pnl < w.pnl ? t : w) : null;
+
+  return {
+    trades,
+    bySymbol,
+    combined: {
+      totalTrades: trades.length,
+      wins,
+      losses: trades.length - wins,
+      winRate: trades.length > 0 ? (wins / trades.length) * 100 : 0,
+      totalPnl,
+      totalPnlPct,
+      totalFees,
+      avgPnlPct: trades.length > 0 ? totalPnlPct / trades.length : 0,
+      bestTrade: bestTrade ? { pnl: bestTrade.pnl, pnlPct: bestTrade.pnlPct, symbol: bestTrade.symbol } : null,
+      worstTrade: worstTrade ? { pnl: worstTrade.pnl, pnlPct: worstTrade.pnlPct, symbol: worstTrade.symbol } : null,
+    },
+    equityCurve: sampledCurve,
+  };
+}
+
+// ============================================================
 // Routes
 // ============================================================
 
@@ -425,6 +635,106 @@ router.post('/backtest/run', authMiddleware, adminMiddleware, async (req, res) =
     });
   } catch (e) {
     logger.error({ err: e, symbol }, 'Backtest failed');
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.post('/backtest/run-multi', authMiddleware, adminMiddleware, async (req, res) => {
+  const {
+    symbols, timeframe = '1h', fromDate, toDate,
+    amount, feePercent, rsiOversold, rsiOverbought,
+    startMs: clientStartMs, endMs: clientEndMs,
+    allowMultiple, maxInvestment, minDelay,
+    timeExitHours, timeExitRSI, maxBuys,
+  } = req.body;
+
+  if (!symbols || !Array.isArray(symbols) || symbols.length === 0) {
+    return res.status(400).json({ error: 'symbols array is required' });
+  }
+  if (symbols.length > 20) return res.status(400).json({ error: 'Maximum 20 tokens per multi-backtest' });
+  if (!fromDate || !toDate) return res.status(400).json({ error: 'Date range is required' });
+
+  const startMs = clientStartMs != null ? clientStartMs : new Date(fromDate).getTime();
+  const endMs = clientEndMs != null ? clientEndMs : new Date(toDate + 'T23:59:59').getTime();
+
+  if (isNaN(startMs) || isNaN(endMs)) return res.status(400).json({ error: 'Invalid date format' });
+  if (startMs >= endMs) return res.status(400).json({ error: 'Start date must be before end date' });
+  if (endMs - startMs > 365 * 24 * 60 * 60 * 1000) {
+    return res.status(400).json({ error: 'Maximum backtest range is 1 year' });
+  }
+
+  const settings = loadSettings();
+  const sim = settings.simulation || {};
+  const config = {
+    amount: amount ?? sim.amount ?? 1000,
+    feePercent: feePercent ?? sim.feePercent ?? 0,
+    rsiOversold: rsiOversold ?? sim.timeframes?.[timeframe]?.rsiOversold ?? 30,
+    rsiOverbought: rsiOverbought ?? sim.timeframes?.[timeframe]?.rsiOverbought ?? 70,
+    allowMultiple: !!allowMultiple,
+    maxInvestment: maxInvestment ? Number(maxInvestment) : 0,
+    minDelay: minDelay ? Number(minDelay) : 0,
+    maxBuys: maxBuys ? Number(maxBuys) : 0,
+    timeExitHours: timeExitHours ? Number(timeExitHours) : 0,
+    timeExitRSI: timeExitRSI ? Number(timeExitRSI) : 50,
+    seguro: settings.seguro || {},
+  };
+
+  try {
+    logger.info({ symbols, timeframe, fromDate, toDate, config }, 'Multi-backtest started');
+
+    const interval = timeframe;
+    const tfMsMap = { '15m': 15 * 60 * 1000, '1h': 60 * 60 * 1000, '4h': 4 * 60 * 60 * 1000, '1d': 24 * 60 * 60 * 1000 };
+    const tfMs = tfMsMap[interval] || 60 * 60 * 1000;
+    const warmupMs = 500 * tfMs;
+    const warmupStart = startMs - warmupMs;
+
+    const candlesBySymbol = {};
+    const sma200BySymbol = {};
+    const errors = [];
+
+    for (const symbol of symbols) {
+      const sym = symbol.toUpperCase();
+      try {
+        const candles = await fetchHistoricalCandles(sym, interval, warmupStart, endMs);
+        if (candles.length < 30) {
+          errors.push({ symbol: sym, error: `Not enough candles (${candles.length})` });
+          continue;
+        }
+        candlesBySymbol[sym] = candles;
+
+        const smaCandles = await fetchSMACandles(sym, startMs, endMs);
+        sma200BySymbol[sym] = precomputeSMA200(smaCandles);
+
+        await sleep(150);
+      } catch (e) {
+        errors.push({ symbol: sym, error: e.message });
+        logger.info({ symbol: sym, err: e.message }, 'Multi-backtest: symbol failed');
+      }
+    }
+
+    if (Object.keys(candlesBySymbol).length === 0) {
+      return res.status(400).json({ error: 'No data fetched for any token', errors });
+    }
+
+    const result = simulateMultiBacktest(candlesBySymbol, sma200BySymbol, config, startMs);
+
+    logger.info({
+      symbols: Object.keys(candlesBySymbol),
+      trades: result.combined.totalTrades,
+      pnl: result.combined.totalPnl.toFixed(2),
+      errors: errors.length,
+    }, 'Multi-backtest complete');
+
+    res.json({
+      ...result,
+      config,
+      timeframe,
+      fromDate,
+      toDate,
+      errors: errors.length > 0 ? errors : undefined,
+    });
+  } catch (e) {
+    logger.error({ err: e }, 'Multi-backtest failed');
     res.status(500).json({ error: e.message });
   }
 });
