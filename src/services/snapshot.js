@@ -170,15 +170,19 @@ async function runAutoTrader(rsiDataArray, settings) {
 
       // BUY logic
       if (rsi <= (config.rsiOversold || 30)) {
-        // Entry filter evaluation
+        // Entry filter evaluation using seguro conditions
         const filterData = {
           price: token.price, sma200_1h: token.sma200_1h, sma200_4h: token.sma200_4h,
           rsi, rsi1h: token.timeframes?.['1h']?.rsi, rsi4h: token.timeframes?.['4h']?.rsi,
           rsi1d: token.timeframes?.['1d']?.rsi, rsi15m: token.timeframes?.['15m']?.rsi,
         };
-        if (shouldSkip(settings.entryFilter, filterData)) {
-          logger.info(`[SIM] SKIP BUY ${token.symbol} (${tf}) | RSI ${rsi.toFixed(1)} <= ${config.rsiOversold || 30} but entry filter blocked`);
-          continue;
+        const seguroCfg = settings.seguro || {};
+        if (seguroCfg.filterEntries) {
+          const filterObj = { enabled: true, action: seguroCfg.filterAction || 'skip', logic: seguroCfg.logic, conditions: seguroCfg.conditions };
+          if (shouldSkip(filterObj, filterData)) {
+            logger.info(`[SIM] SKIP BUY ${token.symbol} (${tf}) | RSI ${rsi.toFixed(1)} <= ${config.rsiOversold || 30} but seguro filter blocked`);
+            continue;
+          }
         }
 
         if (allowMultiple) {

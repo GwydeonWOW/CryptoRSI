@@ -38,7 +38,6 @@ export default function Settings() {
 
       <GenericAlertsSection settings={settings} onUpdate={load} onMsg={setMsg} />
       <SeguroSection settings={settings} onUpdate={load} onMsg={setMsg} />
-      <EntryFilterSection settings={settings} onUpdate={load} onMsg={setMsg} />
       <TokenAlertsSection settings={settings} onUpdate={load} onMsg={setMsg} />
       <SimulationSection settings={settings} onUpdate={load} onMsg={setMsg} />
     </div>
@@ -359,58 +358,7 @@ function GenericAlertsSection({ settings, onUpdate, onMsg }) {
 }
 
 // ============================================================
-// Seguro Config
-// ============================================================
-
-function SeguroSection({ settings, onUpdate, onMsg }) {
-  const sg = settings.seguro || {};
-  const [mult1h, setMult1h] = useState(sg.mult1h ?? 0.995);
-  const [mult4h, setMult4h] = useState(sg.mult4h ?? 0.9575);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    const s = settings.seguro || {};
-    setMult1h(s.mult1h ?? 0.995);
-    setMult4h(s.mult4h ?? 0.9575);
-  }, [settings]);
-
-  async function save() {
-    setLoading(true);
-    try {
-      const res = await fetch('/api/settings', {
-        method: 'PUT',
-        headers: getAuthHeaders(),
-        body: JSON.stringify({ seguro: { mult1h: Number(mult1h), mult4h: Number(mult4h) } }),
-      });
-      const data = await res.json();
-      if (data.success) { onMsg({ type: 'ok', text: 'Seguro guardado' }); onUpdate(); }
-      else onMsg({ type: 'error', text: data.error || 'Error' });
-    } catch (e) { onMsg({ type: 'error', text: e.message }); }
-    finally { setLoading(false); }
-  }
-
-  return (
-    <Section title="Etiqueta Seguro">
-      <p className="section-desc">
-        Condicion para marcar un trade como "seguro": precio &le; SMA200_1h &times; mult AND precio &ge; SMA200_4h &times; mult.
-      </p>
-      <Row label="Multiplicador SMA200 1h">
-        <input type="number" min="0.9" max="1.1" step="0.001" value={mult1h}
-          onChange={e => setMult1h(parseFloat(e.target.value) || 0.995)} style={{ width: 80, textAlign: 'right' }} />
-      </Row>
-      <Row label="Multiplicador SMA200 4h">
-        <input type="number" min="0.8" max="1.1" step="0.001" value={mult4h}
-          onChange={e => setMult4h(parseFloat(e.target.value) || 0.9575)} style={{ width: 80, textAlign: 'right' }} />
-      </Row>
-      <button className="btn btn-primary btn-sm" onClick={save} disabled={loading}>
-        Guardar Etiqueta Seguro
-      </button>
-    </Section>
-  );
-}
-
-// ============================================================
-// Entry Filter — Configurable conditions
+// Seguro Config — Unified: editable label + optional entry filter
 // ============================================================
 
 const FIELD_OPTIONS = [
@@ -437,20 +385,20 @@ const OP_OPTIONS = [
   { value: '==', label: '=' },
 ];
 
-function EntryFilterSection({ settings, onUpdate, onMsg }) {
-  const ef = settings.entryFilter || {};
-  const [enabled, setEnabled] = useState(ef.enabled ?? false);
-  const [action, setAction] = useState(ef.action || 'skip');
-  const [logic, setLogic] = useState(ef.logic || 'OR');
-  const [conditions, setConditions] = useState(ef.conditions || []);
+function SeguroSection({ settings, onUpdate, onMsg }) {
+  const sg = settings.seguro || {};
+  const [logic, setLogic] = useState(sg.logic || 'AND');
+  const [conditions, setConditions] = useState(sg.conditions || []);
+  const [filterEntries, setFilterEntries] = useState(sg.filterEntries ?? false);
+  const [filterAction, setFilterAction] = useState(sg.filterAction || 'skip');
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    const f = settings.entryFilter || {};
-    setEnabled(f.enabled ?? false);
-    setAction(f.action || 'skip');
-    setLogic(f.logic || 'OR');
-    setConditions(f.conditions || []);
+    const s = settings.seguro || {};
+    setLogic(s.logic || 'AND');
+    setConditions(s.conditions || []);
+    setFilterEntries(s.filterEntries ?? false);
+    setFilterAction(s.filterAction || 'skip');
   }, [settings]);
 
   function updateCondition(index, field, value) {
@@ -471,10 +419,10 @@ function EntryFilterSection({ settings, onUpdate, onMsg }) {
       const res = await fetch('/api/settings', {
         method: 'PUT',
         headers: getAuthHeaders(),
-        body: JSON.stringify({ entryFilter: { enabled, action, logic, conditions } }),
+        body: JSON.stringify({ seguro: { logic, conditions, filterEntries, filterAction } }),
       });
       const data = await res.json();
-      if (data.success) { onMsg({ type: 'ok', text: 'Filtro de entrada guardado' }); onUpdate(); }
+      if (data.success) { onMsg({ type: 'ok', text: 'Seguro guardado' }); onUpdate(); }
       else onMsg({ type: 'error', text: data.error || 'Error' });
     } catch (e) { onMsg({ type: 'error', text: e.message }); }
     finally { setLoading(false); }
@@ -484,68 +432,77 @@ function EntryFilterSection({ settings, onUpdate, onMsg }) {
   const numStyle = { width: 65, padding: '0.2rem 0.3rem', fontSize: '0.8rem', textAlign: 'right', background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--surface2)', borderRadius: 4 };
 
   return (
-    <Section title={`Filtro de Entrada ${enabled ? '✓' : ''}`}>
+    <Section title={`Seguro ${filterEntries ? '✓' : ''}`}>
       <p className="section-desc">
-        Condiciones configurables para filtrar entradas de trade. Cada condicion compara un campo con otro (o valor fijo) usando un multiplicador.
+        Define las condiciones para etiquetar un trade como "seguro". Opcionalmente, usa las mismas condiciones para filtrar entradas.
       </p>
-      <Row label="Filtro activo"><Toggle checked={enabled} onChange={setEnabled} /></Row>
 
-      {enabled && (
-        <>
-          <Row label="Accion">
-            <select value={action} onChange={e => setAction(e.target.value)} style={selStyle}>
-              <option value="skip">Omitir (skip) cuando se cumpla</option>
-              <option value="allow">Permitir (allow) solo cuando se cumpla</option>
-            </select>
-          </Row>
-          <Row label="Logica">
-            <select value={logic} onChange={e => setLogic(e.target.value)} style={selStyle}>
-              <option value="OR">OR (cualquier condicion)</option>
-              <option value="AND">AND (todas las condiciones)</option>
-            </select>
-          </Row>
+      <Row label="Logica">
+        <select value={logic} onChange={e => setLogic(e.target.value)} style={selStyle}>
+          <option value="AND">AND (todas las condiciones)</option>
+          <option value="OR">OR (cualquier condicion)</option>
+        </select>
+      </Row>
 
-          <div style={{ marginTop: '0.75rem' }}>
-            <div style={{ fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.5rem', color: 'var(--text-dim)' }}>
-              Condiciones ({conditions.length})
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              {conditions.map((c, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'var(--bg)', padding: '0.4rem 0.6rem', borderRadius: 6, border: '1px solid var(--surface2)', flexWrap: 'wrap' }}>
-                  <Toggle checked={c.enabled !== false} onChange={v => updateCondition(i, 'enabled', v)} />
-                  <select value={c.field} onChange={e => updateCondition(i, 'field', e.target.value)} style={selStyle}>
-                    {FIELD_OPTIONS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
-                  </select>
-                  <select value={c.op} onChange={e => updateCondition(i, 'op', e.target.value)} style={selStyle}>
-                    {OP_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                  </select>
-                  <select value={c.target || 'value'} onChange={e => updateCondition(i, 'target', e.target.value)} style={selStyle}>
-                    {TARGET_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-                  </select>
-                  {c.target && c.target !== 'value' ? (
-                    <>&times; <input type="number" step="0.001" value={c.mult ?? 1}
-                      onChange={e => updateCondition(i, 'mult', parseFloat(e.target.value) || 1)} style={numStyle} /></>
-                  ) : (
-                    <input type="number" step="0.1" value={c.value ?? 0}
-                      onChange={e => updateCondition(i, 'value', parseFloat(e.target.value) || 0)} style={numStyle} />
-                  )}
-                  <button onClick={() => removeCondition(i)}
-                    style={{ background: 'rgba(239,68,68,0.1)', color: 'var(--red)', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: '0.8rem', padding: '0.2rem 0.5rem' }}>
-                    &times;
-                  </button>
-                </div>
-              ))}
-              <button onClick={addCondition}
-                style={{ background: 'var(--surface2)', color: 'var(--text-dim)', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: '0.8rem', padding: '0.4rem 0.8rem', alignSelf: 'flex-start' }}>
-                + Condicion
+      <div style={{ marginTop: '0.75rem', marginBottom: '0.75rem' }}>
+        <div style={{ fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.5rem', color: 'var(--text-dim)' }}>
+          Condiciones ({conditions.length})
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          {conditions.map((c, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'var(--bg)', padding: '0.4rem 0.6rem', borderRadius: 6, border: '1px solid var(--surface2)', flexWrap: 'wrap' }}>
+              <Toggle checked={c.enabled !== false} onChange={v => updateCondition(i, 'enabled', v)} />
+              <select value={c.field} onChange={e => updateCondition(i, 'field', e.target.value)} style={selStyle}>
+                {FIELD_OPTIONS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+              </select>
+              <select value={c.op} onChange={e => updateCondition(i, 'op', e.target.value)} style={selStyle}>
+                {OP_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+              <select value={c.target || 'value'} onChange={e => updateCondition(i, 'target', e.target.value)} style={selStyle}>
+                {TARGET_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+              {c.target && c.target !== 'value' ? (
+                <>&times; <input type="number" step="0.001" value={c.mult ?? 1}
+                  onChange={e => updateCondition(i, 'mult', parseFloat(e.target.value) || 1)} style={numStyle} /></>
+              ) : (
+                <input type="number" step="0.1" value={c.value ?? 0}
+                  onChange={e => updateCondition(i, 'value', parseFloat(e.target.value) || 0)} style={numStyle} />
+              )}
+              <button onClick={() => removeCondition(i)}
+                style={{ background: 'rgba(239,68,68,0.1)', color: 'var(--red)', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: '0.8rem', padding: '0.2rem 0.5rem' }}>
+                &times;
               </button>
             </div>
+          ))}
+          <button onClick={addCondition}
+            style={{ background: 'var(--surface2)', color: 'var(--text-dim)', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: '0.8rem', padding: '0.4rem 0.8rem', alignSelf: 'flex-start' }}>
+            + Condicion
+          </button>
+        </div>
+      </div>
+
+      <div style={{ borderTop: '1px solid var(--surface2)', paddingTop: '0.75rem', marginTop: '0.5rem' }}>
+        <div style={{ fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.5rem', color: 'var(--text-dim)' }}>
+          Filtro de entrada
+        </div>
+        <Row label="Filtrar entradas con seguro">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Toggle checked={filterEntries} onChange={setFilterEntries} />
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>Usar las mismas condiciones para filtrar trades</span>
           </div>
-        </>
-      )}
+        </Row>
+        {filterEntries && (
+          <Row label="Accion">
+            <select value={filterAction} onChange={e => setFilterAction(e.target.value)} style={selStyle}>
+              <option value="skip">Omitir cuando se cumpla (skip)</option>
+              <option value="allow">Permitir solo cuando se cumpla (allow)</option>
+            </select>
+          </Row>
+        )}
+      </div>
 
       <button className="btn btn-primary btn-sm" onClick={save} disabled={loading} style={{ marginTop: '0.75rem' }}>
-        Guardar Filtro de Entrada
+        Guardar Seguro
       </button>
     </Section>
   );

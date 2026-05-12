@@ -46,6 +46,13 @@ function evaluateCondition(condition, data) {
   }
 }
 
+function evaluateConditions(conditions, logic, data) {
+  const active = (conditions || []).filter(c => c.enabled !== false);
+  if (active.length === 0) return false;
+  const results = active.map(c => evaluateCondition(c, data));
+  return logic === 'AND' ? results.every(Boolean) : results.some(Boolean);
+}
+
 /**
  * Evaluate the entry filter against market data.
  * Returns true = SKIP this trade, false = ALLOW this trade.
@@ -53,13 +60,8 @@ function evaluateCondition(condition, data) {
 function shouldSkip(filter, data) {
   if (!filter || !filter.enabled) return false;
 
-  const conditions = (filter.conditions || []).filter(c => c.enabled !== false);
-  if (conditions.length === 0) return false;
-
-  const results = conditions.map(c => evaluateCondition(c, data));
-  const matched = filter.logic === 'AND' ? results.every(Boolean) : results.some(Boolean);
-
+  const matched = evaluateConditions(filter.conditions, filter.logic, data);
   return filter.action === 'skip' ? matched : !matched;
 }
 
-module.exports = { shouldSkip, FIELDS, OPS };
+module.exports = { shouldSkip, evaluateConditions, evaluateCondition, FIELDS, OPS };

@@ -6,6 +6,16 @@ const { getDb } = require('./db');
 
 const DEFAULT_SIM_TF = { enabled: false, rsiOversold: 30, rsiOverbought: 70 };
 
+const DEFAULT_SEGURO = {
+  logic: 'AND',
+  conditions: [
+    { field: 'price', op: '<=', target: 'sma200_1h', mult: 0.995, enabled: true },
+    { field: 'price', op: '>=', target: 'sma200_4h', mult: 0.9575, enabled: true },
+  ],
+  filterEntries: false,
+  filterAction: 'skip',
+};
+
 const DEFAULT_SETTINGS = {
   timezone: 'Europe/Madrid',
   telegram: {
@@ -17,19 +27,7 @@ const DEFAULT_SETTINGS = {
     webhookUrl: '',
     enabled: false,
   },
-  seguro: {
-    mult1h: 0.995,
-    mult4h: 0.9575,
-  },
-  entryFilter: {
-    enabled: false,
-    action: 'skip',
-    logic: 'OR',
-    conditions: [
-      { field: 'price', op: '>=', target: 'sma200_1h', mult: 0.98, enabled: true },
-      { field: 'price', op: '>=', target: 'sma200_4h', mult: 0.99, enabled: true },
-    ],
-  },
+  seguro: { ...DEFAULT_SEGURO, conditions: DEFAULT_SEGURO.conditions.map(c => ({ ...c })) },
   alerts: {
     generic: {
       rsiOversold: 30,
@@ -57,6 +55,30 @@ const DEFAULT_SETTINGS = {
   },
 };
 
+function _normalizeSeguro(seguro, entryFilter) {
+  // Already in new format
+  if (seguro?.conditions) {
+    return {
+      logic: seguro.logic ?? 'AND',
+      conditions: seguro.conditions,
+      filterEntries: seguro.filterEntries ?? false,
+      filterAction: seguro.filterAction ?? 'skip',
+    };
+  }
+  // Old format (mult1h/mult4h): convert to conditions
+  const mult1h = seguro?.mult1h ?? 0.995;
+  const mult4h = seguro?.mult4h ?? 0.9575;
+  return {
+    logic: 'AND',
+    conditions: [
+      { field: 'price', op: '<=', target: 'sma200_1h', mult: mult1h, enabled: true },
+      { field: 'price', op: '>=', target: 'sma200_4h', mult: mult4h, enabled: true },
+    ],
+    filterEntries: entryFilter?.enabled ?? false,
+    filterAction: entryFilter?.action ?? 'skip',
+  };
+}
+
 function _mergeSimTimeframes(userTf) {
   const defaults = DEFAULT_SETTINGS.simulation.timeframes;
   const result = {};
@@ -74,8 +96,7 @@ function _mergeWithDefaults(settings) {
     timezone: settings.timezone || 'Europe/Madrid',
     telegram: { ...DEFAULT_SETTINGS.telegram, ...(settings.telegram || {}) },
     discord: { ...DEFAULT_SETTINGS.discord, ...(settings.discord || {}) },
-    seguro: { ...DEFAULT_SETTINGS.seguro, ...(settings.seguro || {}) },
-    entryFilter: settings.entryFilter || DEFAULT_SETTINGS.entryFilter,
+    seguro: _normalizeSeguro(settings.seguro, settings.entryFilter),
     alerts: {
       generic: { ...DEFAULT_SETTINGS.alerts.generic, ...((settings.alerts || {}).generic || {}) },
       tokens: { ...((settings.alerts || {}).tokens || {}) },
@@ -114,12 +135,12 @@ function loadSettings() {
 function saveSettings(updates) {
   const raw = _readRaw();
   const current = _mergeWithDefaults(raw);
+  const seguro = updates.seguro ? _normalizeSeguro(updates.seguro) : current.seguro;
   const merged = {
     timezone: updates.timezone ?? current.timezone ?? 'Europe/Madrid',
     telegram: { ...current.telegram, ...(updates.telegram || {}) },
     discord: { ...current.discord, ...(updates.discord || {}) },
-    seguro: { ...current.seguro, ...(updates.seguro || {}) },
-    entryFilter: updates.entryFilter ?? current.entryFilter ?? DEFAULT_SETTINGS.entryFilter,
+    seguro,
     alerts: {
       generic: { ...current.alerts.generic, ...((updates.alerts || {}).generic || {}) },
       tokens: { ...current.alerts.tokens, ...((updates.alerts || {}).tokens || {}) },
