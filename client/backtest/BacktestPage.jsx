@@ -39,6 +39,8 @@ export default function BacktestPage() {
     rsiOversold: 30,
     rsiOverbought: 70,
     allowMultiple: false,
+    maxInvestment: 0,
+    minDelay: 0,
   });
 
   useEffect(() => {
@@ -93,7 +95,7 @@ export default function BacktestPage() {
       const res = await fetch('/api/backtest/run', {
         method: 'POST',
         headers: getAuthHeaders(),
-        body: JSON.stringify({ ...form, startMs, endMs }),
+        body: JSON.stringify({ ...form, startMs, endMs, minDelay: (form.minDelay || 0) * 3600000 }),
       });
       const data = await res.json();
       if (!res.ok) { addToast('error', data.error); return; }
@@ -163,6 +165,18 @@ export default function BacktestPage() {
                 style={{ width: 16, height: 16, accentColor: 'var(--blue)' }} />
               <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>Permitir multiples compras</span>
             </div>
+          </Field>
+
+          {/* Max investment */}
+          <Field label="Inversion Max ($)">
+            <input type="number" value={form.maxInvestment || ''} onChange={e => update('maxInvestment', Number(e.target.value))}
+              min={0} step={1000} placeholder="Sin limite" style={inputStyle} />
+          </Field>
+
+          {/* Min delay */}
+          <Field label="Delay Min (h)">
+            <input type="number" value={form.minDelay || ''} onChange={e => update('minDelay', Number(e.target.value))}
+              min={0} step={1} placeholder="Sin delay" style={inputStyle} />
           </Field>
         </div>
 

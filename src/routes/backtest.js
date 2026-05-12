@@ -194,6 +194,8 @@ function simulateBacktest(candles, config, startMs, sma200Data) {
     rsiOverbought = 70,
     rsiPeriod = 14,
     allowMultiple = false,
+    maxInvestment = 0,
+    minDelay = 0,
   } = config;
 
   const allCloses = candles.map(c => c.close);
@@ -204,6 +206,7 @@ function simulateBacktest(candles, config, startMs, sma200Data) {
   let equity = 0;
   const equityCurve = [];
   const feeMultiplier = 1 - (feePercent / 100);
+  let lastBuyTimestamp = 0;
 
   for (let i = rsiPeriod; i < candles.length; i++) {
     const rsi = allRsi[i - rsiPeriod];
@@ -215,7 +218,11 @@ function simulateBacktest(candles, config, startMs, sma200Data) {
     const inRange = timestamp >= startMs;
 
     // BUY signal (only within date range)
-    if (rsi <= rsiOversold && inRange && (allowMultiple || positions.length === 0)) {
+    const canBuy = allowMultiple || positions.length === 0;
+    const withinDelay = !minDelay || timestamp - lastBuyTimestamp >= minDelay;
+    const openInvested = positions.reduce((sum, p) => sum + p.amount, 0);
+    const withinBudget = !maxInvestment || openInvested + amount <= maxInvestment;
+    if (rsi <= rsiOversold && inRange && canBuy && withinDelay && withinBudget) {
       const feeBuy = amount * (feePercent / 100);
       const effectiveAmount = amount * feeMultiplier;
       const quantity = effectiveAmount / price;
@@ -229,6 +236,7 @@ function simulateBacktest(candles, config, startMs, sma200Data) {
         rsiAtOpen: rsi, openedAt: timestamp, openIndex: i,
         sma200_1h, sma200_4h, seguro,
       });
+      lastBuyTimestamp = timestamp;
     }
 
     // SELL signal — close ALL open positions
@@ -262,34 +270,6 @@ function simulateBacktest(candles, config, startMs, sma200Data) {
     if (inRange) {
       const openPnl = positions.reduce((sum, p) => sum + (p.quantity * price - p.amount), 0);
       equityCurve.push({ timestamp, equity: equity + openPnl, rsi, price });
-    }
-  }
-
-  // Force-close remaining positions at last price
-  if (positions.length > 0) {
-    const lastPrice = candles[candles.length - 1].close;
-    const lastTs = candles[candles.length - 1].timestamp;
-    for (const pos of positions) {
-      const grossExit = pos.quantity * lastPrice;
-      const feeSell = grossExit * (feePercent / 100);
-      const exitValue = grossExit * feeMultiplier;
-      const pnl = exitValue - pos.amount;
-      const pnlPct = (pnl / pos.amount) * 100;
-
-      trades.push({
-        entryPrice: pos.entryPrice, exitPrice: lastPrice,
-        amount: pos.amount, quantity: pos.quantity,
-        exitValue, pnl, pnlPct,
-        feeBuy: pos.feeBuy, feeSell,
-        totalFees: pos.feeBuy + feeSell,
-        sma200_1h: pos.sma200_1h, sma200_4h: pos.sma200_4h,
-        seguro: pos.seguro,
-        rsiAtOpen: pos.rsiAtOpen, rsiAtClose: null,
-        openedAt: pos.openedAt, closedAt: lastTs,
-        duration: lastTs - pos.openedAt, forcedClose: true,
-      });
-
-      equity += pnl;
     }
   }
 
@@ -334,7 +314,7 @@ router.post('/backtest/run', authMiddleware, adminMiddleware, async (req, res) =
     symbol, timeframe = '1h', fromDate, toDate,
     amount, feePercent, rsiOversold, rsiOverbought,
     startMs: clientStartMs, endMs: clientEndMs,
-    allowMultiple,
+    allowMultiple, maxInvestment, minDelay,
   } = req.body;
 
   if (!symbol) return res.status(400).json({ error: 'Symbol is required' });
@@ -359,6 +339,8 @@ router.post('/backtest/run', authMiddleware, adminMiddleware, async (req, res) =
     rsiOversold: rsiOversold ?? sim.timeframes?.[timeframe]?.rsiOversold ?? 30,
     rsiOverbought: rsiOverbought ?? sim.timeframes?.[timeframe]?.rsiOverbought ?? 70,
     allowMultiple: !!allowMultiple,
+    maxInvestment: maxInvestment ? Number(maxInvestment) : 0,
+    minDelay: minDelay ? Number(minDelay) : 0,
   };
 
   try {
