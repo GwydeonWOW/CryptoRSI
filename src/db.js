@@ -26,6 +26,7 @@ function getDb() {
   _db.pragma('foreign_keys = ON');
 
   _createTables(_db);
+  _migratePositionsMultiBuy(_db);
   _autoMigrate(_db);
 
   return _db;
@@ -59,8 +60,7 @@ function _createTables(db) {
       quantity REAL NOT NULL,
       rsi_at_open REAL,
       rsi_data TEXT,
-      opened_at TEXT NOT NULL,
-      UNIQUE(symbol, timeframe, user_id)
+      opened_at TEXT NOT NULL
     );
 
     CREATE TABLE IF NOT EXISTS history (
@@ -118,6 +118,37 @@ function _createTables(db) {
     CREATE INDEX IF NOT EXISTS idx_rsi_snapshots_ts ON rsi_snapshots(timestamp);
     CREATE INDEX IF NOT EXISTS idx_price_snapshots_ts ON price_snapshots(timestamp);
   `);
+}
+
+/**
+ * Migrate positions table: remove UNIQUE(symbol, timeframe, user_id) constraint
+ * to support multi-buy (multiple open positions per symbol+timeframe).
+ * Idempotent — safe to run on every boot.
+ */
+function _migratePositionsMultiBuy(db) {
+  const indexes = db.pragma('index_list(positions)');
+  const hasUnique = indexes.some(idx => idx.unique && idx.name.startsWith('sqlite_autoindex_positions_'));
+  if (!hasUnique) return;
+
+  db.exec(`
+    CREATE TABLE positions_new (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id),
+      symbol TEXT NOT NULL,
+      timeframe TEXT NOT NULL DEFAULT '1d',
+      entry_price REAL NOT NULL,
+      amount REAL NOT NULL,
+      quantity REAL NOT NULL,
+      rsi_at_open REAL,
+      rsi_data TEXT,
+      opened_at TEXT NOT NULL
+    );
+    INSERT INTO positions_new SELECT * FROM positions;
+    DROP TABLE positions;
+    ALTER TABLE positions_new RENAME TO positions;
+  `);
+  db.exec('CREATE INDEX IF NOT EXISTS idx_positions_user ON positions(user_id)');
+  console.log('[MIGRATE] Removed UNIQUE constraint from positions table (multi-buy support)');
 }
 
 /**

@@ -492,6 +492,8 @@ function SimulationSection({ settings, onUpdate, onMsg }) {
   const [enabled, setEnabled] = useState(sim.enabled ?? true);
   const [amount, setAmount] = useState(sim.amount || 1000);
   const [feePercent, setFeePercent] = useState(sim.feePercent || 0);
+  const [allowMultiple, setAllowMultiple] = useState(sim.allowMultiple || false);
+  const [cooldownMinutes, setCooldownMinutes] = useState(sim.cooldownMinutes || 0);
   const [tfConfigs, setTfConfigs] = useState(
     sim.timeframes || {
       '15m': { enabled: false, rsiOversold: 30, rsiOverbought: 70 },
@@ -507,6 +509,8 @@ function SimulationSection({ settings, onUpdate, onMsg }) {
     setEnabled(s.enabled ?? true);
     setAmount(s.amount || 1000);
     setFeePercent(s.feePercent || 0);
+    setAllowMultiple(s.allowMultiple || false);
+    setCooldownMinutes(s.cooldownMinutes || 0);
     setTfConfigs(s.timeframes || tfConfigs);
   }, [settings]);
 
@@ -520,7 +524,7 @@ function SimulationSection({ settings, onUpdate, onMsg }) {
       const res = await fetch('/api/settings/simulation', {
         method: 'PUT',
         headers: getAuthHeaders(),
-        body: JSON.stringify({ enabled, amount, feePercent, timeframes: tfConfigs }),
+        body: JSON.stringify({ enabled, amount, feePercent, allowMultiple, cooldownMinutes: allowMultiple ? cooldownMinutes : 0, timeframes: tfConfigs }),
       });
       const data = await res.json();
       if (data.success) { onMsg({ type: 'ok', text: 'Simulacion guardada' }); onUpdate(); }
@@ -551,6 +555,27 @@ function SimulationSection({ settings, onUpdate, onMsg }) {
           <span style={{ fontSize: '0.85rem', color: 'var(--text-dim)' }}>%</span>
         </div>
       </Row>
+
+      <Row label="Multi-compra">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Toggle checked={allowMultiple} onChange={setAllowMultiple} />
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>Permitir multiples compras por token</span>
+        </div>
+      </Row>
+
+      {allowMultiple && (
+        <Row label="Cooldown entre compras">
+          <select value={cooldownMinutes} onChange={e => setCooldownMinutes(parseInt(e.target.value))}>
+            <option value="0">Sin cooldown</option>
+            <option value="60">1 hora</option>
+            <option value="120">2 horas</option>
+            <option value="240">4 horas</option>
+            <option value="480">8 horas</option>
+            <option value="720">12 horas</option>
+            <option value="1440">24 horas</option>
+          </select>
+        </Row>
+      )}
 
       <div style={{ marginTop: '1rem' }}>
         <div style={{ fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.5rem', color: 'var(--text-dim)' }}>

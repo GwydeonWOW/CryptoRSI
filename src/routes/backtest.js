@@ -196,6 +196,8 @@ function simulateBacktest(candles, config, startMs, sma200Data) {
     allowMultiple = false,
     maxInvestment = 0,
     minDelay = 0,
+    timeExitHours = 0,
+    timeExitRSI = 50,
   } = config;
 
   const allCloses = candles.map(c => c.close);
@@ -207,6 +209,7 @@ function simulateBacktest(candles, config, startMs, sma200Data) {
   const equityCurve = [];
   const feeMultiplier = 1 - (feePercent / 100);
   let lastBuyTimestamp = 0;
+  const timeExitMs = timeExitHours * 3600000;
 
   for (let i = rsiPeriod; i < candles.length; i++) {
     const rsi = allRsi[i - rsiPeriod];
@@ -239,7 +242,41 @@ function simulateBacktest(candles, config, startMs, sma200Data) {
       lastBuyTimestamp = timestamp;
     }
 
-    // SELL signal — close ALL open positions
+    // Time-based exit: close positions open > X hours when RSI >= exit threshold
+    if (timeExitMs > 0 && positions.length > 0 && inRange) {
+      const remaining = [];
+      for (const pos of positions) {
+        const duration = timestamp - pos.openedAt;
+        if (duration >= timeExitMs && rsi >= timeExitRSI) {
+          const grossExit = pos.quantity * price;
+          const feeSell = grossExit * (feePercent / 100);
+          const exitValue = grossExit * feeMultiplier;
+          const pnl = exitValue - pos.amount;
+          const pnlPct = (pnl / pos.amount) * 100;
+
+          trades.push({
+            entryPrice: pos.entryPrice, exitPrice: price,
+            amount: pos.amount, quantity: pos.quantity,
+            exitValue, pnl, pnlPct,
+            feeBuy: pos.feeBuy, feeSell,
+            totalFees: pos.feeBuy + feeSell,
+            sma200_1h: pos.sma200_1h, sma200_4h: pos.sma200_4h,
+            seguro: pos.seguro,
+            rsiAtOpen: pos.rsiAtOpen, rsiAtClose: rsi,
+            openedAt: pos.openedAt, closedAt: timestamp,
+            duration: timestamp - pos.openedAt,
+            timeExit: true,
+          });
+
+          equity += pnl;
+        } else {
+          remaining.push(pos);
+        }
+      }
+      positions = remaining;
+    }
+
+    // SELL signal — close ALL remaining open positions
     if (rsi >= rsiOverbought && positions.length > 0 && inRange) {
       for (const pos of positions) {
         const grossExit = pos.quantity * price;
@@ -315,6 +352,7 @@ router.post('/backtest/run', authMiddleware, adminMiddleware, async (req, res) =
     amount, feePercent, rsiOversold, rsiOverbought,
     startMs: clientStartMs, endMs: clientEndMs,
     allowMultiple, maxInvestment, minDelay,
+    timeExitHours, timeExitRSI,
   } = req.body;
 
   if (!symbol) return res.status(400).json({ error: 'Symbol is required' });
@@ -341,6 +379,8 @@ router.post('/backtest/run', authMiddleware, adminMiddleware, async (req, res) =
     allowMultiple: !!allowMultiple,
     maxInvestment: maxInvestment ? Number(maxInvestment) : 0,
     minDelay: minDelay ? Number(minDelay) : 0,
+    timeExitHours: timeExitHours ? Number(timeExitHours) : 0,
+    timeExitRSI: timeExitRSI ? Number(timeExitRSI) : 50,
   };
 
   try {

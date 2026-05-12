@@ -4,7 +4,7 @@
 
 const { Router } = require('express');
 const { authMiddleware, adminMiddleware } = require('../auth');
-const { openPosition, closePosition, getOpenPositions, getOpenPosition, hasOpenPosition, getHistory, getPaginatedHistory, getStats } = require('../trades');
+const { openPosition, closePosition, closeAllPositions, getOpenPositions, getOpenPosition, hasOpenPosition, getHistory, getPaginatedHistory, getStats } = require('../trades');
 const { fetchCurrentPrice } = require('../api');
 const { fetchEnrichedRSI, AUTO_TRADER_USER } = require('../services/snapshot');
 const { getDb } = require('../db');

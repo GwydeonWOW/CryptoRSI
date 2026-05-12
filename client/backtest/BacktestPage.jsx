@@ -41,6 +41,8 @@ export default function BacktestPage() {
     allowMultiple: false,
     maxInvestment: 0,
     minDelay: 0,
+    timeExitHours: 0,
+    timeExitRSI: 50,
   });
 
   useEffect(() => {
@@ -95,7 +97,7 @@ export default function BacktestPage() {
       const res = await fetch('/api/backtest/run', {
         method: 'POST',
         headers: getAuthHeaders(),
-        body: JSON.stringify({ ...form, startMs, endMs, minDelay: (form.minDelay || 0) * 3600000 }),
+        body: JSON.stringify({ ...form, startMs, endMs, minDelay: (form.minDelay || 0) * 3600000, timeExitHours: form.timeExitHours || 0, timeExitRSI: form.timeExitRSI || 50 }),
       });
       const data = await res.json();
       if (!res.ok) { addToast('error', data.error); return; }
@@ -177,6 +179,18 @@ export default function BacktestPage() {
           <Field label="Delay Min (h)">
             <input type="number" value={form.minDelay || ''} onChange={e => update('minDelay', Number(e.target.value))}
               min={0} step={1} placeholder="Sin delay" style={inputStyle} />
+          </Field>
+
+          {/* Time Exit Hours */}
+          <Field label="Time Exit (h)">
+            <input type="number" value={form.timeExitHours || ''} onChange={e => update('timeExitHours', Number(e.target.value))}
+              min={0} step={1} placeholder="Sin limite" style={inputStyle} />
+          </Field>
+
+          {/* Time Exit RSI */}
+          <Field label="RSI Time Exit (>=)">
+            <input type="number" value={form.timeExitRSI || ''} onChange={e => update('timeExitRSI', Number(e.target.value))}
+              min={1} max={100} step={1} placeholder="50" style={inputStyle} />
           </Field>
         </div>
 
@@ -265,6 +279,7 @@ export default function BacktestPage() {
                   { key: 'sma200_1h', label: 'SMA200 1h', render: v => v != null ? `$${formatPrice(v)}` : '-' },
                   { key: 'sma200_4h', label: 'SMA200 4h', render: v => v != null ? `$${formatPrice(v)}` : '-' },
                   { key: 'seguro', label: 'Seguro', render: v => v ? <span style={{ color: 'var(--green)', fontWeight: 700 }}>SI</span> : '' },
+                  { key: 'timeExit', label: 'T.Exit', render: v => v ? 'TIME' : '' },
                 ]}
                 data={[...result.trades].reverse()}
                 emptyText="Sin operaciones"
@@ -380,7 +395,7 @@ function formatDuration(ms) {
 }
 
 function exportCSV(result, form, timezone) {
-  const headers = ['Apertura', 'Cierre', 'Duracion', 'P. Compra', 'P. Venta', 'Inversion', 'RSI Compra', 'RSI Venta', 'P&L ($)', 'P&L (%)', 'Fee Compra', 'Fee Venta', 'Fees Total', 'SMA200 1h', 'SMA200 4h', 'Seguro'];
+  const headers = ['Apertura', 'Cierre', 'Duracion', 'P. Compra', 'P. Venta', 'Inversion', 'RSI Compra', 'RSI Venta', 'P&L ($)', 'P&L (%)', 'Fee Compra', 'Fee Venta', 'Fees Total', 'SMA200 1h', 'SMA200 4h', 'Seguro', 'Time Exit'];
   const rows = result.trades.map(t => [
     formatTs(t.openedAt, timezone),
     formatTs(t.closedAt, timezone),
@@ -398,6 +413,7 @@ function exportCSV(result, form, timezone) {
     t.sma200_1h != null ? formatPrice(t.sma200_1h) : '',
     t.sma200_4h != null ? formatPrice(t.sma200_4h) : '',
     t.seguro ? 'SI' : '',
+    t.timeExit ? 'TIME' : '',
   ]);
 
   const summary = [

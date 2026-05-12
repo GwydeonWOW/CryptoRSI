@@ -5,12 +5,13 @@
 const { calculateRSI, getRecommendation, calculateMultiTimeframeRSI } = require('../rsi');
 const { fetchCandles, fetchCurrentPrice, calculateSMA } = require('../api');
 const { loadTokens } = require('../config');
-const { openPosition, closePosition, hasOpenPosition } = require('../trades');
+const { openPosition, closePosition, closeAllPositions, hasOpenPosition } = require('../trades');
 const { getMarketAnalysis } = require('../futures');
 const {
   saveRSISnapshot, saveMarketSnapshot, savePriceSnapshot,
 } = require('../storage');
 const { loadSettings } = require('../settings');
+const cooldownStore = require('../cooldownStore');
 const logger = require('../logger');
 
 let lastSnapshot = null;
@@ -116,6 +117,8 @@ async function runAutoTrader(rsiDataArray, settings) {
   const tfConfigs = sim.timeframes || {};
   const amount = sim.amount || 1000;
   const feePercent = sim.feePercent || 0;
+  const allowMultiple = sim.allowMultiple || false;
+  const cooldownMinutes = sim.cooldownMinutes || 0;
   const activeTFs = Object.entries(tfConfigs).filter(([, c]) => c.enabled);
 
   if (activeTFs.length === 0) {
@@ -123,7 +126,7 @@ async function runAutoTrader(rsiDataArray, settings) {
     return;
   }
 
-  logger.info(`[SIM] Checking ${rsiDataArray.length} tokens | Amount: $${amount} | TFs: ${activeTFs.map(([tf]) => tf).join(',')}`);
+  logger.info(`[SIM] Checking ${rsiDataArray.length} tokens | Amount: $${amount} | TFs: ${activeTFs.map(([tf]) => tf).join(',')} | Multi: ${allowMultiple}${allowMultiple ? ` | Cooldown: ${cooldownMinutes}m` : ''}`);
 
   for (const token of rsiDataArray) {
     if (token.error) continue;
@@ -164,23 +167,50 @@ async function runAutoTrader(rsiDataArray, settings) {
         signalRSI: rsi,
       };
 
+      // BUY logic
       if (rsi <= (config.rsiOversold || 30)) {
-        if (!hasOpenPosition(AUTO_TRADER_USER, token.symbol, tf)) {
-          const result = openPosition(AUTO_TRADER_USER, token.symbol, token.price, rsiData, amount, tf, feePercent);
-          if (result.success) {
-            logger.info(`[SIM] BUY ${token.symbol} @ $${token.price?.toFixed(2)} | RSI ${rsi.toFixed(1)} (${tf}) | $${amount}`);
+        if (allowMultiple) {
+          const cooldownKey = `sim:${token.symbol}:${tf}`;
+          const lastBuy = cooldownStore.get(cooldownKey);
+          const cooldownMs = cooldownMinutes * 60 * 1000;
+          if (lastBuy && Date.now() - lastBuy < cooldownMs) {
+            const remaining = Math.round((cooldownMs - (Date.now() - lastBuy)) / 60000);
+            logger.info(`[SIM] SKIP BUY ${token.symbol} (${tf}) | RSI ${rsi.toFixed(1)} <= ${config.rsiOversold || 30} but cooldown (${remaining}m left)`);
+          } else {
+            const result = openPosition(AUTO_TRADER_USER, token.symbol, token.price, rsiData, amount, tf, feePercent, true);
+            if (result.success) {
+              cooldownStore.set(cooldownKey, Date.now());
+              logger.info(`[SIM] BUY ${token.symbol} @ $${token.price?.toFixed(2)} | RSI ${rsi.toFixed(1)} (${tf}) | $${amount} [MULTI]`);
+            }
           }
         } else {
-          logger.info(`[SIM] SKIP BUY ${token.symbol} (${tf}) | RSI ${rsi.toFixed(1)} <= ${config.rsiOversold || 30} but position open`);
+          if (!hasOpenPosition(AUTO_TRADER_USER, token.symbol, tf)) {
+            const result = openPosition(AUTO_TRADER_USER, token.symbol, token.price, rsiData, amount, tf, feePercent, false);
+            if (result.success) {
+              logger.info(`[SIM] BUY ${token.symbol} @ $${token.price?.toFixed(2)} | RSI ${rsi.toFixed(1)} (${tf}) | $${amount}`);
+            }
+          } else {
+            logger.info(`[SIM] SKIP BUY ${token.symbol} (${tf}) | RSI ${rsi.toFixed(1)} <= ${config.rsiOversold || 30} but position open`);
+          }
         }
       }
 
+      // SELL logic
       if (rsi >= (config.rsiOverbought || 70)) {
-        if (hasOpenPosition(AUTO_TRADER_USER, token.symbol, tf)) {
-          const result = closePosition(AUTO_TRADER_USER, token.symbol, token.price, rsiData, tf, feePercent);
-          if (result.success) {
-            const pnlStr = result.trade.pnl >= 0 ? `+$${result.trade.pnl.toFixed(2)}` : `-$${Math.abs(result.trade.pnl).toFixed(2)}`;
-            logger.info(`[SIM] SELL ${token.symbol} @ $${token.price?.toFixed(2)} | RSI ${rsi.toFixed(1)} (${tf}) | ${pnlStr} (${result.trade.pnlPct.toFixed(1)}%)${rsiSource === 'retry' ? ' [RETRY]' : ''}`);
+        const hasPos = hasOpenPosition(AUTO_TRADER_USER, token.symbol, tf);
+        if (hasPos) {
+          if (allowMultiple) {
+            const closedTrades = closeAllPositions(AUTO_TRADER_USER, token.symbol, token.price, rsiData, tf, feePercent);
+            for (const trade of closedTrades) {
+              const pnlStr = trade.pnl >= 0 ? `+$${trade.pnl.toFixed(2)}` : `-$${Math.abs(trade.pnl).toFixed(2)}`;
+              logger.info(`[SIM] SELL ${token.symbol} @ $${token.price?.toFixed(2)} | RSI ${rsi.toFixed(1)} (${tf}) | ${pnlStr} (${trade.pnlPct.toFixed(1)}%) [MULTI x${closedTrades.length}]${rsiSource === 'retry' ? ' [RETRY]' : ''}`);
+            }
+          } else {
+            const result = closePosition(AUTO_TRADER_USER, token.symbol, token.price, rsiData, tf, feePercent);
+            if (result.success) {
+              const pnlStr = result.trade.pnl >= 0 ? `+$${result.trade.pnl.toFixed(2)}` : `-$${Math.abs(result.trade.pnl).toFixed(2)}`;
+              logger.info(`[SIM] SELL ${token.symbol} @ $${token.price?.toFixed(2)} | RSI ${rsi.toFixed(1)} (${tf}) | ${pnlStr} (${result.trade.pnlPct.toFixed(1)}%)${rsiSource === 'retry' ? ' [RETRY]' : ''}`);
+            }
           }
         } else {
           logger.info(`[SIM] SKIP SELL ${token.symbol} (${tf}) | RSI ${rsi.toFixed(1)} >= ${config.rsiOverbought || 70} but no position`);

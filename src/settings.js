@@ -33,6 +33,8 @@ const DEFAULT_SETTINGS = {
     enabled: true,
     amount: 1000,
     feePercent: 0,
+    allowMultiple: false,
+    cooldownMinutes: 0,
     timeframes: {
       '15m': { ...DEFAULT_SIM_TF },
       '1h':  { ...DEFAULT_SIM_TF, enabled: true },
@@ -67,6 +69,8 @@ function _mergeWithDefaults(settings) {
       enabled: settings.simulation?.enabled ?? DEFAULT_SETTINGS.simulation.enabled,
       amount: settings.simulation?.amount ?? DEFAULT_SETTINGS.simulation.amount,
       feePercent: settings.simulation?.feePercent ?? DEFAULT_SETTINGS.simulation.feePercent,
+      allowMultiple: settings.simulation?.allowMultiple ?? DEFAULT_SETTINGS.simulation.allowMultiple,
+      cooldownMinutes: settings.simulation?.cooldownMinutes ?? DEFAULT_SETTINGS.simulation.cooldownMinutes,
       timeframes: _mergeSimTimeframes(settings.simulation?.timeframes),
     },
   };
@@ -107,6 +111,8 @@ function saveSettings(updates) {
       enabled: updates.simulation?.enabled ?? current.simulation?.enabled ?? true,
       amount: updates.simulation?.amount ?? current.simulation?.amount ?? 1000,
       feePercent: updates.simulation?.feePercent ?? current.simulation?.feePercent ?? 0,
+      allowMultiple: updates.simulation?.allowMultiple ?? current.simulation?.allowMultiple ?? false,
+      cooldownMinutes: updates.simulation?.cooldownMinutes ?? current.simulation?.cooldownMinutes ?? 0,
       timeframes: _mergeSimTimeframes({
         ...current.simulation?.timeframes,
         ...updates.simulation?.timeframes,

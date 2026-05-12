@@ -1,6 +1,6 @@
 /**
  * Trades Store — SQLite-based storage for simulated trades
- * Supports multi-timeframe positions: each (symbol, timeframe) can have 1 open position.
+ * Supports multi-timeframe and multi-buy positions.
  */
 
 const { getDb } = require('./db');
@@ -21,15 +21,18 @@ function _getRSIData(rsiData, price) {
 /**
  * Open a simulated position (buy)
  * feePercent: trading fee % (e.g. 0.1 = 0.1%). Deducted from amount on entry.
+ * allowMultiple: if true, allow multiple positions per symbol+timeframe (multi-buy).
  */
-function openPosition(userId, symbol, price, rsiData, amount = 100, timeframe = '1d', feePercent = 0) {
+function openPosition(userId, symbol, price, rsiData, amount = 100, timeframe = '1d', feePercent = 0, allowMultiple = false) {
   const db = getDb();
   const upper = symbol.toUpperCase();
 
-  const existing = db.prepare('SELECT id FROM positions WHERE user_id = ? AND symbol = ? AND (timeframe = ? OR (timeframe IS NULL AND ? = \'1d\'))')
-    .get(userId, upper, timeframe, timeframe);
-  if (existing) {
-    return { success: false, message: `Ya tienes una posicion abierta en ${upper} (${timeframe})` };
+  if (!allowMultiple) {
+    const existing = db.prepare('SELECT id FROM positions WHERE user_id = ? AND symbol = ? AND (timeframe = ? OR (timeframe IS NULL AND ? = \'1d\'))')
+      .get(userId, upper, timeframe, timeframe);
+    if (existing) {
+      return { success: false, message: `Ya tienes una posicion abierta en ${upper} (${timeframe})` };
+    }
   }
 
   const { signalRSI, rsi, seguro } = _getRSIData(rsiData, price);
@@ -118,6 +121,71 @@ function closePosition(userId, symbol, currentPrice, rsiData, timeframe = '1d', 
   transaction();
 
   return { success: true, trade: closedTrade };
+}
+
+/**
+ * Close ALL open positions for a symbol+timeframe (used by multi-buy sell).
+ * Returns array of closed trades.
+ */
+function closeAllPositions(userId, symbol, currentPrice, rsiData, timeframe = '1d', feePercent = 0) {
+  const db = getDb();
+  const upper = symbol.toUpperCase();
+
+  const rows = db.prepare('SELECT * FROM positions WHERE user_id = ? AND symbol = ? AND (timeframe = ? OR (timeframe IS NULL AND ? = \'1d\'))')
+    .all(userId, upper, timeframe, timeframe);
+
+  if (rows.length === 0) return [];
+
+  const { signalRSI, rsi: rsiClose, seguro } = _getRSIData(rsiData, currentPrice);
+  const feeMultiplier = 1 - (feePercent / 100);
+  const closedTrades = [];
+
+  const transaction = db.transaction(() => {
+    for (const row of rows) {
+      const exitValue = row.quantity * currentPrice * feeMultiplier;
+      const pnl = exitValue - row.amount;
+      const pnlPct = (pnl / row.amount) * 100;
+
+      const closedTrade = {
+        id: row.id,
+        symbol: row.symbol,
+        timeframe: row.timeframe || '1d',
+        entryPrice: row.entry_price,
+        exitPrice: currentPrice,
+        amount: row.amount,
+        quantity: row.quantity,
+        exitValue,
+        pnl,
+        pnlPct,
+        feePercent,
+        rsiAtOpen: row.rsi_at_open,
+        rsiAtClose: signalRSI,
+        rsi: row.rsi_data ? JSON.parse(row.rsi_data) : null,
+        rsiClose,
+        seguro,
+        openedAt: row.opened_at,
+        closedAt: new Date().toISOString(),
+      };
+
+      db.prepare('DELETE FROM positions WHERE id = ?').run(row.id);
+      db.prepare(`
+        INSERT INTO history (id, user_id, symbol, timeframe, entry_price, exit_price, amount, quantity, exit_value, pnl, pnl_pct, rsi_at_open, rsi_at_close, rsi_data, rsi_close_data, opened_at, closed_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        closedTrade.id, userId, closedTrade.symbol, closedTrade.timeframe,
+        closedTrade.entryPrice, closedTrade.exitPrice, closedTrade.amount, closedTrade.quantity,
+        closedTrade.exitValue, closedTrade.pnl, closedTrade.pnlPct,
+        closedTrade.rsiAtOpen, closedTrade.rsiAtClose,
+        row.rsi_data, JSON.stringify(rsiClose),
+        closedTrade.openedAt, closedTrade.closedAt
+      );
+
+      closedTrades.push(closedTrade);
+    }
+  });
+  transaction();
+
+  return closedTrades;
 }
 
 function getOpenPositions(userId) {
@@ -266,4 +334,4 @@ function _rowToHistory(row) {
   };
 }
 
-module.exports = { openPosition, closePosition, getOpenPositions, getOpenPosition, hasOpenPosition, getHistory, getPaginatedHistory, getStats };
+module.exports = { openPosition, closePosition, closeAllPositions, getOpenPositions, getOpenPosition, hasOpenPosition, getHistory, getPaginatedHistory, getStats };
