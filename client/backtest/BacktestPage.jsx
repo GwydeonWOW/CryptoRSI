@@ -209,6 +209,8 @@ export default function BacktestPage() {
               color={result.stats.winRate >= 50 ? 'var(--green)' : 'var(--red)'} />
             <StatCard label="P&L Total" value={formatPnl(result.stats.totalPnl)}
               color={result.stats.totalPnl >= 0 ? 'var(--green)' : 'var(--red)'} />
+            <StatCard label="P&L Total (%)" value={`${(result.stats.totalPnlPct || 0).toFixed(2)}%`}
+              color={(result.stats.totalPnlPct || 0) >= 0 ? 'var(--green)' : 'var(--red)'} />
             <StatCard label="P&L Medio" value={`${result.stats.avgPnlPct.toFixed(2)}%`}
               color={result.stats.avgPnlPct >= 0 ? 'var(--green)' : 'var(--red)'} />
             <StatCard label="Mejor" value={result.stats.bestTrade ? formatPnl(result.stats.bestTrade.pnl) : '-'} color="var(--green)" />

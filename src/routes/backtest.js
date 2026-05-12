@@ -296,7 +296,8 @@ function simulateBacktest(candles, config, startMs, sma200Data) {
   const wins = trades.filter(t => t.pnl > 0).length;
   const totalPnl = trades.reduce((sum, t) => sum + t.pnl, 0);
   const totalFees = trades.reduce((sum, t) => sum + t.totalFees, 0);
-  const avgPnlPct = trades.length > 0 ? trades.reduce((sum, t) => sum + t.pnlPct, 0) / trades.length : 0;
+  const totalPnlPct = trades.reduce((sum, t) => sum + t.pnlPct, 0);
+  const avgPnlPct = trades.length > 0 ? totalPnlPct / trades.length : 0;
   const bestTrade = trades.length > 0 ? trades.reduce((best, t) => t.pnl > best.pnl ? t : best) : null;
   const worstTrade = trades.length > 0 ? trades.reduce((worst, t) => t.pnl < worst.pnl ? t : worst) : null;
 
@@ -310,6 +311,7 @@ function simulateBacktest(candles, config, startMs, sma200Data) {
       losses: trades.length - wins,
       winRate: trades.length > 0 ? (wins / trades.length) * 100 : 0,
       totalPnl,
+      totalPnlPct,
       totalFees,
       avgPnlPct,
       bestTrade: bestTrade ? { pnl: bestTrade.pnl, pnlPct: bestTrade.pnlPct } : null,
