@@ -13,6 +13,7 @@ const { calculateSMA } = require('../api');
 const { shouldSkip, evaluateConditions } = require('../entryFilter');
 const { loadSettings } = require('../settings');
 const { loadTokens } = require('../config');
+const { getDb } = require('../db');
 const logger = require('../logger');
 
 const router = Router();
@@ -762,6 +763,78 @@ router.get('/backtest/tokens', authMiddleware, adminMiddleware, (req, res) => {
 router.get('/backtest/defaults', authMiddleware, adminMiddleware, (req, res) => {
   const sim = loadSettings().simulation || {};
   res.json({ amount: sim.amount ?? 1000, feePercent: sim.feePercent ?? 0, timeframes: sim.timeframes || {} });
+});
+
+// ============================================================
+// Save / Load Simulation Results
+// ============================================================
+
+function extractSummary(result) {
+  const isMulti = !!result.bySymbol;
+  const stats = isMulti ? result.combined : result.stats;
+  return JSON.stringify({
+    isMulti,
+    totalTrades: stats?.totalTrades || 0,
+    winRate: stats?.winRate || 0,
+    totalPnl: stats?.totalPnl || 0,
+    symbols: isMulti ? Object.keys(result.bySymbol || {}) : [result.symbol],
+    timeframe: result.timeframe,
+    fromDate: result.fromDate,
+    toDate: result.toDate,
+  });
+}
+
+router.post('/backtest/save', authMiddleware, adminMiddleware, (req, res) => {
+  const { label, config, result } = req.body;
+  if (!result) return res.status(400).json({ error: 'Result is required' });
+  const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  try {
+    const db = getDb();
+    db.prepare('INSERT INTO backtest_results (id, created_at, label, config, result, summary) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(id, new Date().toISOString(), (label || '').slice(0, 200) || 'Sin nombre', JSON.stringify(config || {}), JSON.stringify(result), extractSummary(result));
+    res.json({ success: true, id });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.get('/backtest/saved', authMiddleware, adminMiddleware, (req, res) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare('SELECT id, created_at, label, config, summary FROM backtest_results ORDER BY created_at DESC').all();
+    res.json(rows.map(r => ({
+      id: r.id, createdAt: r.created_at, label: r.label,
+      config: r.config ? JSON.parse(r.config) : {},
+      summary: r.summary ? JSON.parse(r.summary) : null,
+    })));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.get('/backtest/saved/:id', authMiddleware, adminMiddleware, (req, res) => {
+  try {
+    const db = getDb();
+    const row = db.prepare('SELECT * FROM backtest_results WHERE id = ?').get(req.params.id);
+    if (!row) return res.status(404).json({ error: 'Not found' });
+    res.json({
+      id: row.id, createdAt: row.created_at, label: row.label,
+      config: row.config ? JSON.parse(row.config) : {},
+      result: row.result ? JSON.parse(row.result) : null,
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.delete('/backtest/saved/:id', authMiddleware, adminMiddleware, (req, res) => {
+  try {
+    const db = getDb();
+    const changes = db.prepare('DELETE FROM backtest_results WHERE id = ?').run(req.params.id).changes;
+    res.json({ success: true, deleted: changes });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 module.exports = router;

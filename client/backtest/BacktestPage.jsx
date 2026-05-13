@@ -30,6 +30,9 @@ export default function BacktestPage() {
   const [seguroOnly, setSeguroOnly] = useState(false);
   const [multiMode, setMultiMode] = useState(false);
   const [selectedSymbols, setSelectedSymbols] = useState([]);
+  const [savedSims, setSavedSims] = useState([]);
+  const [showSaved, setShowSaved] = useState(false);
+  const [saveLabel, setSaveLabel] = useState('');
 
   const now = new Date();
   const [form, setForm] = useState({
@@ -76,6 +79,69 @@ export default function BacktestPage() {
     }
     load();
   }, []);
+
+  async function loadSavedSims() {
+    try {
+      const data = await useAuthAPI('/api/backtest/saved');
+      setSavedSims(data);
+    } catch (e) { /* ignore */ }
+  }
+
+  useEffect(() => { loadSavedSims(); }, []);
+
+  async function saveSimulation() {
+    if (!result) return;
+    try {
+      const formConfig = {
+        symbol: form.symbol, timeframe: form.timeframe,
+        fromDate: form.fromDate, toDate: form.toDate,
+        amount: form.amount, feePercent: form.feePercent,
+        rsiOversold: form.rsiOversold, rsiOverbought: form.rsiOverbought,
+        allowMultiple: form.allowMultiple, maxInvestment: form.maxInvestment,
+        compound: form.compound, rsiRules: form.rsiRules,
+        multiMode, selectedSymbols,
+      };
+      const res = await fetch('/api/backtest/save', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ label: saveLabel, config: formConfig, result }),
+      });
+      const data = await res.json();
+      if (!res.ok) { addToast('error', data.error); return; }
+      addToast('success', 'Simulacion guardada');
+      setSaveLabel('');
+      loadSavedSims();
+    } catch (e) {
+      addToast('error', e.message);
+    }
+  }
+
+  async function loadSimulation(id) {
+    try {
+      const data = await useAuthAPI(`/api/backtest/saved/${id}`);
+      if (data.result) {
+        setResult(data.result);
+        setSeguroOnly(false);
+        addToast('success', `Simulacion "${data.label}" cargada`);
+      }
+    } catch (e) {
+      addToast('error', e.message);
+    }
+  }
+
+  async function deleteSimulation(id, label) {
+    if (!confirm(`Eliminar simulacion "${label}"?`)) return;
+    try {
+      const res = await fetch(`/api/backtest/saved/${id}`, { method: 'DELETE', headers: getAuthHeaders() });
+      const data = await res.json();
+      if (data.success) {
+        setSavedSims(prev => prev.filter(s => s.id !== id));
+        addToast('success', 'Simulacion eliminada');
+      }
+    } catch (e) {
+      addToast('error', e.message);
+    }
+  }
 
   function setPreset(days) {
     const to = new Date();
@@ -350,6 +416,64 @@ export default function BacktestPage() {
 
       {loading && <Loading text={multiMode ? 'Ejecutando multi-backtest...' : 'Ejecutando backtest...'} />}
 
+      {/* Save bar */}
+      {result && (
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--surface2)', borderRadius: 10, padding: '0.75rem 1rem', marginBottom: '1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          <input value={saveLabel} onChange={e => setSaveLabel(e.target.value)} placeholder="Nombre de la simulacion..."
+            style={{ flex: 1, minWidth: 200, padding: '0.4rem 0.6rem', fontSize: '0.85rem', background: 'var(--bg)', border: '1px solid var(--surface2)', borderRadius: 6, color: 'var(--text)' }} />
+          <button className="btn btn-primary" onClick={saveSimulation} style={{ padding: '0.4rem 1rem', fontSize: '0.85rem' }}>
+            Guardar
+          </button>
+        </div>
+      )}
+
+      {/* Saved Simulations */}
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--surface2)', borderRadius: 10, marginBottom: '1.5rem', overflow: 'hidden' }}>
+        <div onClick={() => setShowSaved(!showSaved)} style={{ padding: '0.75rem 1rem', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text)' }}>
+            Simulaciones Guardadas ({savedSims.length})
+          </span>
+          <span style={{ color: 'var(--text-dim)', fontSize: '0.8rem' }}>{showSaved ? '▲' : '▼'}</span>
+        </div>
+        {showSaved && (
+          <div style={{ padding: '0 1rem 1rem' }}>
+            {savedSims.length === 0 ? (
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-dim)', textAlign: 'center', padding: '1rem' }}>
+                No hay simulaciones guardadas
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {savedSims.map(sim => {
+                  const s = sim.summary || {};
+                  return (
+                    <div key={sim.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.6rem 0.75rem', background: 'var(--bg)', border: '1px solid var(--surface2)', borderRadius: 8 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text)', marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {sim.label || 'Sin nombre'}
+                        </div>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>
+                          {s.isMulti ? `${(s.symbols || []).length} tokens` : (s.symbols?.[0] || '')} | {s.timeframe} | {s.fromDate} - {s.toDate} | {s.totalTrades} ops | P&L: <span style={{ color: (s.totalPnl || 0) >= 0 ? 'var(--green)' : 'var(--red)' }}>{formatPnl(s.totalPnl || 0)}</span>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.3rem', marginLeft: '0.5rem' }}>
+                        <button className="btn btn-sm" onClick={() => loadSimulation(sim.id)}
+                          style={{ padding: '0.3rem 0.6rem', background: 'var(--surface2)', color: 'var(--blue)', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: '0.75rem' }}>
+                          Cargar
+                        </button>
+                        <button onClick={() => deleteSimulation(sim.id, sim.label)}
+                          style={{ padding: '0.3rem 0.4rem', background: 'rgba(239,68,68,0.1)', color: 'var(--red)', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: '0.75rem' }}>
+                          &times;
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* Results */}
       {result && !isMulti && (
         <SingleResults result={result} seguroOnly={seguroOnly} setSeguroOnly={setSeguroOnly} form={form} timezone={timezone} />
@@ -513,15 +637,34 @@ function MultiResults({ result, seguroOnly, setSeguroOnly, form, timezone }) {
   const combined = result.combined;
   const bySymbol = result.bySymbol;
   const symbols = Object.keys(bySymbol);
+  const [symbolFilter, setSymbolFilter] = useState('ALL');
+
+  const perTokenSummary = {};
+  for (const sym of symbols) {
+    const symTrades = allTrades.filter(t => t.symbol === sym);
+    perTokenSummary[sym] = {
+      trades: symTrades.length,
+      wins: symTrades.filter(t => t.pnl > 0).length,
+      pnl: symTrades.reduce((s, t) => s + t.pnl, 0),
+      pnlPct: symTrades.map(t => t.pnlPct),
+    };
+  }
+
+  const filteredPerToken = symbolFilter !== 'ALL' ? { [symbolFilter]: perTokenSummary[symbolFilter] } : perTokenSummary;
+  let displayTrades = allTrades;
+  if (symbolFilter !== 'ALL') displayTrades = displayTrades.filter(t => t.symbol === symbolFilter);
+  if (seguroOnly) displayTrades = displayTrades.filter(t => t.seguro);
+  const filteredWins = displayTrades.filter(t => t.pnl > 0).length;
+  const filteredPnl = displayTrades.reduce((s, t) => s + t.pnl, 0);
 
   return (
     <div>
       {/* Export + Seguro filter */}
       {allTrades.length > 0 && (
         <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
-          <button className="btn btn-sm" onClick={() => exportCSV(seguroOnly ? { ...result, trades: allTrades.filter(t => t.seguro) } : result, form, timezone, true)}
+          <button className="btn btn-sm" onClick={() => exportCSV({ ...result, trades: displayTrades }, form, timezone, true)}
             style={{ padding: '0.4rem 1rem', background: 'var(--surface2)', color: 'var(--text)', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: '0.8rem' }}>
-            Exportar CSV{seguroOnly ? ' (solo seguro)' : ''}
+            Exportar CSV{seguroOnly ? ' (seguro)' : ''}{symbolFilter !== 'ALL' ? ` (${symbolFilter})` : ''}
           </button>
           {allTrades.some(t => t.seguro) && (
             <button className="btn btn-sm" onClick={() => setSeguroOnly(!seguroOnly)}
@@ -531,6 +674,33 @@ function MultiResults({ result, seguroOnly, setSeguroOnly, form, timezone }) {
           )}
         </div>
       )}
+
+      {/* Token Summary Cards */}
+      {symbols.length > 1 && (
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--surface2)', borderRadius: 10, padding: '1rem', marginBottom: '1.5rem' }}>
+          <h4 style={{ margin: '0 0 0.75rem 0', color: 'var(--text)', fontSize: '0.9rem' }}>Resumen por Token</h4>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0.5rem' }}>
+            {Object.keys(filteredPerToken).map(sym => (
+              <TokenSummary key={sym} symbol={sym} stats={filteredPerToken[sym]} active={symbolFilter === sym}
+                onClick={() => setSymbolFilter(symbolFilter === sym ? 'ALL' : sym)} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Filter bar */}
+      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap' }}>
+        <select value={symbolFilter} onChange={e => setSymbolFilter(e.target.value)}
+          style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem', background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--surface2)', borderRadius: 4 }}>
+          <option value="ALL">Todos los tokens</option>
+          {symbols.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+        {(symbolFilter !== 'ALL' || seguroOnly) && (
+          <span style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>
+            {displayTrades.length} ops | Win: {displayTrades.length > 0 ? `${((filteredWins / displayTrades.length) * 100).toFixed(0)}%` : '-'} | P&L: <span style={{ color: filteredPnl >= 0 ? 'var(--green)' : 'var(--red)' }}>{formatPnl(filteredPnl)}</span>
+          </span>
+        )}
+      </div>
 
       {/* Combined stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '0.75rem', marginBottom: '1.5rem' }}>
@@ -585,8 +755,8 @@ function MultiResults({ result, seguroOnly, setSeguroOnly, form, timezone }) {
         </div>
       )}
 
-      {/* All trades table */}
-      <TradesTable trades={allTrades} seguroOnly={seguroOnly} timezone={timezone} showSymbol={true} />
+      {/* Trades table */}
+      <TradesTable trades={displayTrades} seguroOnly={false} timezone={timezone} showSymbol={symbolFilter === 'ALL'} />
     </div>
   );
 }
@@ -594,6 +764,26 @@ function MultiResults({ result, seguroOnly, setSeguroOnly, form, timezone }) {
 // ============================================================
 // Shared components
 // ============================================================
+
+function TokenSummary({ symbol, stats, active, onClick }) {
+  const winRate = stats.trades > 0 ? ((stats.wins / stats.trades) * 100).toFixed(0) : '-';
+  const avgPct = stats.pnlPct.length > 0 ? (stats.pnlPct.reduce((a, b) => a + b, 0) / stats.pnlPct.length).toFixed(1) : '-';
+  return (
+    <div onClick={onClick} style={{
+      background: active ? 'rgba(59,130,246,0.1)' : 'var(--bg)',
+      border: `1px solid ${active ? 'var(--blue)' : 'var(--surface2)'}`,
+      borderRadius: 8, padding: '0.75rem', cursor: 'pointer', transition: '0.15s',
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
+        <strong style={{ fontSize: '0.9rem' }}>{symbol}</strong>
+        <span style={{ fontSize: '0.85rem', fontWeight: 600, color: stats.pnl >= 0 ? 'var(--green)' : 'var(--red)' }}>{formatPnl(stats.pnl)}</span>
+      </div>
+      <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>
+        {stats.trades} ops | WR: {winRate}% | Avg: {avgPct}%
+      </div>
+    </div>
+  );
+}
 
 function TradesTable({ trades, seguroOnly, timezone, showSymbol }) {
   const filteredTrades = seguroOnly ? trades.filter(t => t.seguro) : trades;

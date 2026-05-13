@@ -117,6 +117,17 @@ function _createTables(db) {
     CREATE INDEX IF NOT EXISTS idx_positions_user ON positions(user_id);
     CREATE INDEX IF NOT EXISTS idx_rsi_snapshots_ts ON rsi_snapshots(timestamp);
     CREATE INDEX IF NOT EXISTS idx_price_snapshots_ts ON price_snapshots(timestamp);
+
+    CREATE TABLE IF NOT EXISTS backtest_results (
+      id TEXT PRIMARY KEY,
+      created_at TEXT NOT NULL,
+      label TEXT NOT NULL DEFAULT '',
+      config TEXT NOT NULL,
+      result TEXT NOT NULL,
+      summary TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_backtest_results_created ON backtest_results(created_at);
   `);
 }
 
