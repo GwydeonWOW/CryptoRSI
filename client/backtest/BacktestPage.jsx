@@ -645,6 +645,24 @@ function TradesTable({ trades, seguroOnly, timezone, showSymbol }) {
   );
 }
 
+function Toggle({ checked, onChange }) {
+  return (
+    <label style={{ position: 'relative', display: 'inline-block', width: 36, height: 20, cursor: 'pointer' }}>
+      <input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)}
+        style={{ opacity: 0, width: 0, height: 0 }} />
+      <span style={{
+        position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+        background: checked ? 'var(--blue)' : 'var(--surface2)',
+        borderRadius: 20, transition: '0.2s',
+      }} />
+      <span style={{
+        position: 'absolute', height: 14, width: 14, left: checked ? 18 : 4, bottom: 3,
+        background: 'white', borderRadius: '50%', transition: '0.2s',
+      }} />
+    </label>
+  );
+}
+
 function Field({ label, children, inline }) {
   return (
     <div style={inline ? { display: 'flex', alignItems: 'center', gap: 4 } : {}}>
