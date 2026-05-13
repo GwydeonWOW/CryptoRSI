@@ -122,6 +122,24 @@ export default function BacktestPage() {
       if (data.result) {
         setResult(data.result);
         setSeguroOnly(false);
+        const c = data.config || {};
+        setForm(prev => ({
+          ...prev,
+          symbol: c.symbol || prev.symbol,
+          timeframe: c.timeframe || prev.timeframe,
+          fromDate: c.fromDate || prev.fromDate,
+          toDate: c.toDate || prev.toDate,
+          amount: c.amount ?? prev.amount,
+          feePercent: c.feePercent ?? prev.feePercent,
+          rsiOversold: c.rsiOversold ?? prev.rsiOversold,
+          rsiOverbought: c.rsiOverbought ?? prev.rsiOverbought,
+          allowMultiple: c.allowMultiple ?? prev.allowMultiple,
+          maxInvestment: c.maxInvestment ?? prev.maxInvestment,
+          compound: c.compound || prev.compound,
+          rsiRules: c.rsiRules || prev.rsiRules,
+        }));
+        if (c.multiMode != null) setMultiMode(c.multiMode);
+        if (c.selectedSymbols?.length) setSelectedSymbols(c.selectedSymbols);
         addToast('success', `Simulacion "${data.label}" cargada`);
       }
     } catch (e) {
