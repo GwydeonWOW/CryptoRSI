@@ -238,6 +238,7 @@ function closeTrade(pos, price, rsi, timestamp, feePercent, feeMultiplier, extra
   const pnl = exitValue - pos.amount;
   const pnlPct = (pnl / pos.amount) * 100;
   return {
+    symbol: pos.symbol,
     entryPrice: pos.entryPrice, exitPrice: price,
     amount: pos.amount, quantity: pos.quantity,
     exitValue, pnl, pnlPct,
