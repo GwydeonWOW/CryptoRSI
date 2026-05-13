@@ -18,6 +18,7 @@ const logger = require('../logger');
 const router = Router();
 const BINANCE_BASE = 'https://api.binance.com';
 const BINANCE_PAGE = 1000;
+const TF_MS_MAP = { '15m': 15 * 60 * 1000, '1h': 60 * 60 * 1000, '4h': 4 * 60 * 60 * 1000, '1d': 24 * 60 * 60 * 1000 };
 
 // ============================================================
 // Historical Candle Fetchers
@@ -40,7 +41,6 @@ async function fetchHistoricalCandles(symbol, interval, startMs, endMs) {
     ? symbol.toUpperCase()
     : `${symbol.toUpperCase()}USDT`;
 
-  // Try Binance with pagination
   try {
     const allCandles = [];
     let cursor = startMs;
@@ -76,7 +76,6 @@ async function fetchHistoricalCandles(symbol, interval, startMs, endMs) {
     logger.info({ symbol, err: e.message }, 'Binance historical failed, trying CoinCap');
   }
 
-  // Fallback: CoinCap
   try {
     return await fetchCoinCapHistorical(symbol, interval, startMs, endMs);
   } catch (e) {
@@ -132,26 +131,46 @@ async function fetchCoinCapHistorical(symbol, interval, startMs, endMs) {
 }
 
 // ============================================================
-// SMA200 Support
+// Multi-Timeframe Candle & RSI Data
 // ============================================================
 
 async function fetchSMACandles(symbol, startMs, endMs) {
   const results = {};
-  // 1h needs 250 candles warm-up, 4h needs 250 candles warm-up
   const warmupMap = { '1h': 250 * 60 * 60 * 1000, '4h': 250 * 4 * 60 * 60 * 1000 };
 
   for (const interval of ['1h', '4h']) {
     try {
       const warmup = warmupMap[interval];
       const candles = await fetchHistoricalCandles(symbol, interval, startMs - warmup, endMs);
-      if (candles.length >= 200) {
-        results[interval] = candles;
-      }
+      if (candles.length >= 200) results[interval] = candles;
     } catch (e) {
       logger.info({ symbol, interval, err: e.message }, 'SMA candle fetch failed (optional)');
     }
   }
   return results;
+}
+
+async function fetchReferenceCandles(symbol, signalTF, startMs, endMs) {
+  const signalTfMs = TF_MS_MAP[signalTF] || TF_MS_MAP['1h'];
+  const warmupStart = startMs - 500 * signalTfMs;
+  const referenceTfs = ['1h', '4h', '1d'].filter(tf => tf !== signalTF);
+  const refWarmup = 50; // fewer candles needed for reference RSI
+
+  const reference = {};
+  for (const tf of referenceTfs) {
+    try {
+      const tfMs = TF_MS_MAP[tf];
+      const candles = await fetchHistoricalCandles(symbol, tf, startMs - refWarmup * tfMs, endMs);
+      if (candles.length > 0) reference[tf] = candles;
+    } catch (e) {
+      logger.info({ symbol, tf, err: e.message }, 'Reference candle fetch failed (optional)');
+    }
+  }
+  // Also include signal TF in reference if it's one of 1h/4h/1d
+  if (['1h', '4h', '1d'].includes(signalTF)) {
+    // Will be computed from main candles
+  }
+  return reference;
 }
 
 function precomputeSMA200(smaCandles) {
@@ -161,33 +180,167 @@ function precomputeSMA200(smaCandles) {
     sma200[tf] = [];
     for (let i = 199; i < candles.length; i++) {
       const val = calculateSMA(closes.slice(0, i + 1), 200);
-      if (val !== null) {
-        sma200[tf].push({ timestamp: candles[i].timestamp, value: val });
-      }
+      if (val !== null) sma200[tf].push({ timestamp: candles[i].timestamp, value: val });
     }
   }
   return sma200;
 }
 
-function findNearestSMA(smaArray, targetTs) {
-  if (!smaArray || smaArray.length === 0) return null;
-  let lo = 0, hi = smaArray.length - 1;
-  while (lo < hi) {
-    const mid = (lo + hi) >>> 1;
-    if (smaArray[mid].timestamp < targetTs) lo = mid + 1;
-    else hi = mid;
+function precomputeReferenceRSI(referenceCandles, signalCandles, signalTF, rsiPeriod) {
+  const result = {};
+  for (const [tf, candles] of Object.entries(referenceCandles || {})) {
+    const closes = candles.map(c => c.close);
+    const rsiValues = calculateRSI(closes, rsiPeriod);
+    result[tf] = [];
+    for (let i = rsiPeriod; i < candles.length; i++) {
+      const rsi = rsiValues[i - rsiPeriod];
+      if (rsi != null) result[tf].push({ timestamp: candles[i].timestamp, rsi });
+    }
   }
-  if (lo > 0 && Math.abs(smaArray[lo - 1].timestamp - targetTs) < Math.abs(smaArray[lo].timestamp - targetTs)) {
-    return smaArray[lo - 1].value;
+  // Include signal TF in reference data (computed from main candles)
+  if (['1h', '4h', '1d'].includes(signalTF) && signalCandles) {
+    const closes = signalCandles.map(c => c.close);
+    const rsiValues = calculateRSI(closes, rsiPeriod);
+    result[signalTF] = [];
+    for (let i = rsiPeriod; i < signalCandles.length; i++) {
+      const rsi = rsiValues[i - rsiPeriod];
+      if (rsi != null) result[signalTF].push({ timestamp: signalCandles[i].timestamp, rsi });
+    }
   }
-  return smaArray[lo].value;
+  return result;
 }
 
 // ============================================================
-// Simulation Engine
+// Shared Helpers
 // ============================================================
 
-function simulateBacktest(candles, config, startMs, sma200Data) {
+function findNearest(arr, targetTs) {
+  if (!arr || arr.length === 0) return null;
+  let lo = 0, hi = arr.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (arr[mid].timestamp < targetTs) lo = mid + 1;
+    else hi = mid;
+  }
+  if (lo > 0 && Math.abs(arr[lo - 1].timestamp - targetTs) < Math.abs(arr[lo].timestamp - targetTs)) return arr[lo - 1];
+  return arr[lo];
+}
+
+function findNearestValue(arr, targetTs) {
+  const point = findNearest(arr, targetTs);
+  return point?.value ?? point?.rsi ?? null;
+}
+
+function closeTrade(pos, price, rsi, timestamp, feePercent, feeMultiplier, extra = {}) {
+  const grossExit = pos.quantity * price;
+  const feeSell = grossExit * (feePercent / 100);
+  const exitValue = grossExit * feeMultiplier;
+  const pnl = exitValue - pos.amount;
+  const pnlPct = (pnl / pos.amount) * 100;
+  return {
+    entryPrice: pos.entryPrice, exitPrice: price,
+    amount: pos.amount, quantity: pos.quantity,
+    exitValue, pnl, pnlPct,
+    feeBuy: pos.feeBuy, feeSell, totalFees: pos.feeBuy + feeSell,
+    sma200_1h: pos.sma200_1h, sma200_4h: pos.sma200_4h,
+    seguro: pos.seguro,
+    rsiAtOpen: pos.rsiAtOpen, rsiAtClose: rsi,
+    rsi1hAtOpen: pos.rsi1hAtOpen, rsi4hAtOpen: pos.rsi4hAtOpen, rsi1dAtOpen: pos.rsi1dAtOpen,
+    openedAt: pos.openedAt, closedAt: timestamp,
+    duration: timestamp - pos.openedAt,
+    activeRule: pos.activeRule,
+    ...extra,
+  };
+}
+
+function computeStats(trades, candlesInRange, warmupCandles) {
+  const wins = trades.filter(t => t.pnl > 0).length;
+  const totalPnl = trades.reduce((sum, t) => sum + t.pnl, 0);
+  const totalFees = trades.reduce((sum, t) => sum + t.totalFees, 0);
+  const totalPnlPct = trades.reduce((sum, t) => sum + t.pnlPct, 0);
+  const avgPnlPct = trades.length > 0 ? totalPnlPct / trades.length : 0;
+  const bestTrade = trades.length > 0 ? trades.reduce((b, t) => t.pnl > b.pnl ? t : b) : null;
+  const worstTrade = trades.length > 0 ? trades.reduce((w, t) => t.pnl < w.pnl ? t : w) : null;
+
+  return {
+    totalTrades: trades.length,
+    wins,
+    losses: trades.length - wins,
+    winRate: trades.length > 0 ? (wins / trades.length) * 100 : 0,
+    totalPnl,
+    totalPnlPct,
+    totalFees,
+    avgPnlPct,
+    bestTrade: bestTrade ? { pnl: bestTrade.pnl, pnlPct: bestTrade.pnlPct } : null,
+    worstTrade: worstTrade ? { pnl: worstTrade.pnl, pnlPct: worstTrade.pnlPct } : null,
+    candlesAnalyzed: candlesInRange,
+    warmupCandles,
+  };
+}
+
+function downsampleCurve(curve) {
+  if (curve.length <= 500) return curve;
+  const step = Math.ceil(curve.length / 500);
+  return curve.filter((_, i) => i % step === 0);
+}
+
+// ============================================================
+// Conditional RSI Rules + Compound Interest
+// ============================================================
+
+function resolveRsiThresholds(rsiRulesConfig, refRSI, defaultOversold, defaultOverbought) {
+  if (!rsiRulesConfig?.enabled) return { oversold: defaultOversold, overbought: defaultOverbought, ruleIndex: -1 };
+
+  for (let ri = 0; ri < (rsiRulesConfig.rules || []).length; ri++) {
+    const rule = rsiRulesConfig.rules[ri];
+    if (rule.enabled === false) continue;
+    const allMatch = (rule.conditions || []).every(cond => {
+      const rsi = refRSI[cond.timeframe];
+      if (rsi == null) return false;
+      switch (cond.op) {
+        case '>': return rsi > cond.value;
+        case '<': return rsi < cond.value;
+        case '>=': return rsi >= cond.value;
+        case '<=': return rsi <= cond.value;
+        case 'between': return rsi >= cond.value && rsi <= (cond.value2 ?? cond.value);
+        default: return false;
+      }
+    });
+    if (allMatch) return { oversold: rule.oversold, overbought: rule.overbought, ruleIndex: ri };
+  }
+  return { oversold: defaultOversold, overbought: defaultOverbought, ruleIndex: -1 };
+}
+
+function calcTradeAmount(compoundConfig, baseAmount, realizedProfit) {
+  if (!compoundConfig?.enabled) return baseAmount;
+  const base = baseAmount;
+  switch (compoundConfig.mode) {
+    case 'level':
+      return base * (1 + Math.floor(Math.max(0, realizedProfit) / base));
+    case 'reinvest':
+      return Math.max(base, base + realizedProfit);
+    case 'step':
+      const step = compoundConfig.step || base;
+      return base + step * Math.floor(Math.max(0, realizedProfit) / step);
+    default:
+      return base;
+  }
+}
+
+function getReferenceRSI(referenceRSIData, timestamp) {
+  const refRSI = {};
+  for (const tf of ['1h', '4h', '1d']) {
+    const arr = referenceRSIData[tf];
+    refRSI[tf] = arr ? findNearestValue(arr, timestamp) : null;
+  }
+  return refRSI;
+}
+
+// ============================================================
+// Simulation Engine — Single Token
+// ============================================================
+
+function simulateBacktest(candles, config, startMs, sma200Data, referenceRSI) {
   const {
     amount = 1000,
     feePercent = 0,
@@ -201,18 +354,21 @@ function simulateBacktest(candles, config, startMs, sma200Data) {
     timeExitHours = 0,
     timeExitRSI = 50,
     seguro = {},
+    rsiRules,
+    compound,
   } = config;
 
   const allCloses = candles.map(c => c.close);
   const allRsi = calculateRSI(allCloses, rsiPeriod);
+  const feeMultiplier = 1 - (feePercent / 100);
+  const timeExitMs = timeExitHours * 3600000;
 
   const trades = [];
   let positions = [];
   let equity = 0;
+  let realizedProfit = 0;
   const equityCurve = [];
-  const feeMultiplier = 1 - (feePercent / 100);
   let lastBuyTimestamp = 0;
-  const timeExitMs = timeExitHours * 3600000;
 
   for (let i = rsiPeriod; i < candles.length; i++) {
     const rsi = allRsi[i - rsiPeriod];
@@ -222,59 +378,57 @@ function simulateBacktest(candles, config, startMs, sma200Data) {
     const price = candle.close;
     const timestamp = candle.timestamp;
     const inRange = timestamp >= startMs;
+    if (!inRange) continue;
 
-    // BUY signal (only within date range)
-    const canBuy = allowMultiple || positions.length === 0;
-    const withinDelay = !minDelay || timestamp - lastBuyTimestamp >= minDelay;
-    const openInvested = positions.reduce((sum, p) => sum + p.amount, 0);
-    const withinBudget = !maxInvestment || openInvested + amount <= maxInvestment;
-    const withinMaxBuys = !maxBuys || positions.length < maxBuys;
-    const sma200_1h = findNearestSMA(sma200Data?.['1h'], timestamp);
-    const sma200_4h = findNearestSMA(sma200Data?.['4h'], timestamp);
+    // Reference RSI for this timestamp
+    const refRSI = getReferenceRSI(referenceRSI || {}, timestamp);
+
+    // Resolve dynamic thresholds from conditional rules
+    const { oversold, overbought, ruleIndex } = resolveRsiThresholds(rsiRules, refRSI, rsiOversold, rsiOverbought);
+
+    // SMA + seguro
+    const sma200_1h = findNearestValue(sma200Data?.['1h'], timestamp);
+    const sma200_4h = findNearestValue(sma200Data?.['4h'], timestamp);
     const filterData = { price, sma200_1h, sma200_4h, rsi };
     const seguroLabel = evaluateConditions(seguro.conditions, seguro.logic, filterData);
     const passesSeguroFilter = seguro.filterEntries
       ? !shouldSkip({ enabled: true, action: seguro.filterAction || 'skip', logic: seguro.logic, conditions: seguro.conditions }, filterData)
       : true;
-    if (rsi <= rsiOversold && inRange && canBuy && withinDelay && withinBudget && withinMaxBuys && passesSeguroFilter) {
-      const feeBuy = amount * (feePercent / 100);
-      const effectiveAmount = amount * feeMultiplier;
+
+    // BUY signal
+    const tradeAmt = calcTradeAmount(compound, amount, realizedProfit);
+    const canBuy = allowMultiple || positions.length === 0;
+    const withinDelay = !minDelay || timestamp - lastBuyTimestamp >= minDelay;
+    const openInvested = positions.reduce((sum, p) => sum + p.amount, 0);
+    const withinBudget = !maxInvestment || openInvested + tradeAmt <= maxInvestment;
+    const withinMaxBuys = !maxBuys || positions.length < maxBuys;
+
+    if (rsi <= oversold && canBuy && withinDelay && withinBudget && withinMaxBuys && passesSeguroFilter) {
+      const feeBuy = tradeAmt * (feePercent / 100);
+      const effectiveAmount = tradeAmt * feeMultiplier;
       const quantity = effectiveAmount / price;
       positions.push({
-        entryPrice: price, amount, quantity, feeBuy,
+        entryPrice: price, amount: tradeAmt, quantity, feeBuy,
         rsiAtOpen: rsi, openedAt: timestamp, openIndex: i,
-        sma200_1h, sma200_4h, seguro: seguroLabel,
+        sma200_1h, sma200_4h, seguro: seguroLabel, activeRule: ruleIndex,
+        rsi1hAtOpen: refRSI['1h'], rsi4hAtOpen: refRSI['4h'], rsi1dAtOpen: refRSI['1d'],
       });
       lastBuyTimestamp = timestamp;
     }
 
-    // Time-based exit: close positions open > X hours when RSI >= exit threshold
-    if (timeExitMs > 0 && positions.length > 0 && inRange) {
+    // Time-based exit
+    if (timeExitMs > 0 && positions.length > 0) {
       const remaining = [];
       for (const pos of positions) {
         const duration = timestamp - pos.openedAt;
         if (duration >= timeExitMs && rsi >= timeExitRSI) {
-          const grossExit = pos.quantity * price;
-          const feeSell = grossExit * (feePercent / 100);
-          const exitValue = grossExit * feeMultiplier;
-          const pnl = exitValue - pos.amount;
-          const pnlPct = (pnl / pos.amount) * 100;
-
-          trades.push({
-            entryPrice: pos.entryPrice, exitPrice: price,
-            amount: pos.amount, quantity: pos.quantity,
-            exitValue, pnl, pnlPct,
-            feeBuy: pos.feeBuy, feeSell,
-            totalFees: pos.feeBuy + feeSell,
-            sma200_1h: pos.sma200_1h, sma200_4h: pos.sma200_4h,
-            seguro: pos.seguro,
-            rsiAtOpen: pos.rsiAtOpen, rsiAtClose: rsi,
-            openedAt: pos.openedAt, closedAt: timestamp,
-            duration: timestamp - pos.openedAt,
-            timeExit: true,
-          });
-
-          equity += pnl;
+          const trade = closeTrade(pos, price, rsi, timestamp, feePercent, feeMultiplier, { timeExit: true });
+          trade.rsi1hAtClose = refRSI['1h'];
+          trade.rsi4hAtClose = refRSI['4h'];
+          trade.rsi1dAtClose = refRSI['1d'];
+          trades.push(trade);
+          equity += trade.pnl;
+          realizedProfit += trade.pnl;
         } else {
           remaining.push(pos);
         }
@@ -282,79 +436,41 @@ function simulateBacktest(candles, config, startMs, sma200Data) {
       positions = remaining;
     }
 
-    // SELL signal — close ALL remaining open positions
-    if (rsi >= rsiOverbought && positions.length > 0 && inRange) {
+    // SELL signal — close ALL open positions
+    if (rsi >= overbought && positions.length > 0) {
       for (const pos of positions) {
-        const grossExit = pos.quantity * price;
-        const feeSell = grossExit * (feePercent / 100);
-        const exitValue = grossExit * feeMultiplier;
-        const pnl = exitValue - pos.amount;
-        const pnlPct = (pnl / pos.amount) * 100;
-
-        trades.push({
-          entryPrice: pos.entryPrice, exitPrice: price,
-          amount: pos.amount, quantity: pos.quantity,
-          exitValue, pnl, pnlPct,
-          feeBuy: pos.feeBuy, feeSell,
-          totalFees: pos.feeBuy + feeSell,
-          sma200_1h: pos.sma200_1h, sma200_4h: pos.sma200_4h,
-          seguro: pos.seguro,
-          rsiAtOpen: pos.rsiAtOpen, rsiAtClose: rsi,
-          openedAt: pos.openedAt, closedAt: timestamp,
-          duration: timestamp - pos.openedAt,
-        });
-
-        equity += pnl;
+        const trade = closeTrade(pos, price, rsi, timestamp, feePercent, feeMultiplier);
+        trade.rsi1hAtClose = refRSI['1h'];
+        trade.rsi4hAtClose = refRSI['4h'];
+        trade.rsi1dAtClose = refRSI['1d'];
+        trades.push(trade);
+        equity += trade.pnl;
+        realizedProfit += trade.pnl;
       }
       positions = [];
     }
 
-    // Track equity curve only within date range
-    if (inRange) {
-      const openPnl = positions.reduce((sum, p) => sum + (p.quantity * price - p.amount), 0);
-      equityCurve.push({ timestamp, equity: equity + openPnl, rsi, price });
-    }
+    // Equity curve
+    const openPnl = positions.reduce((sum, p) => sum + (p.quantity * price - p.amount), 0);
+    equityCurve.push({ timestamp, equity: equity + openPnl, rsi, price });
   }
-
-  const wins = trades.filter(t => t.pnl > 0).length;
-  const totalPnl = trades.reduce((sum, t) => sum + t.pnl, 0);
-  const totalFees = trades.reduce((sum, t) => sum + t.totalFees, 0);
-  const totalPnlPct = trades.reduce((sum, t) => sum + t.pnlPct, 0);
-  const avgPnlPct = trades.length > 0 ? totalPnlPct / trades.length : 0;
-  const bestTrade = trades.length > 0 ? trades.reduce((best, t) => t.pnl > best.pnl ? t : best) : null;
-  const worstTrade = trades.length > 0 ? trades.reduce((worst, t) => t.pnl < worst.pnl ? t : worst) : null;
 
   const candlesInRange = candles.filter(c => c.timestamp >= startMs).length;
 
   return {
     trades,
-    stats: {
-      totalTrades: trades.length,
-      wins,
-      losses: trades.length - wins,
-      winRate: trades.length > 0 ? (wins / trades.length) * 100 : 0,
-      totalPnl,
-      totalPnlPct,
-      totalFees,
-      avgPnlPct,
-      bestTrade: bestTrade ? { pnl: bestTrade.pnl, pnlPct: bestTrade.pnlPct } : null,
-      worstTrade: worstTrade ? { pnl: worstTrade.pnl, pnlPct: worstTrade.pnlPct } : null,
-      candlesAnalyzed: candlesInRange,
-      warmupCandles: candles.length - candlesInRange,
-    },
-    equityCurve: equityCurve.length > 500
-      ? equityCurve.filter((_, i) => i % Math.ceil(equityCurve.length / 500) === 0)
-      : equityCurve,
+    stats: computeStats(trades, candlesInRange, candles.length - candlesInRange),
+    equityCurve: downsampleCurve(equityCurve),
   };
 }
 
 // ============================================================
-// Multi-Token Simulation
+// Simulation Engine — Multi-Token
 // ============================================================
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-function simulateMultiBacktest(candlesBySymbol, sma200BySymbol, config, startMs) {
+function simulateMultiBacktest(candlesBySymbol, sma200BySymbol, referenceRSIBySymbol, config, startMs) {
   const {
     amount = 1000,
     feePercent = 0,
@@ -368,45 +484,37 @@ function simulateMultiBacktest(candlesBySymbol, sma200BySymbol, config, startMs)
     timeExitHours = 0,
     timeExitRSI = 50,
     seguro = {},
+    rsiRules,
+    compound,
   } = config;
 
   const feeMultiplier = 1 - (feePercent / 100);
   const timeExitMs = timeExitHours * 3600000;
   const symbols = Object.keys(candlesBySymbol);
 
-  // Pre-calculate RSI per symbol and build merged event stream
+  // Build merged event stream
   const events = [];
   for (const symbol of symbols) {
     const candles = candlesBySymbol[symbol];
     const closes = candles.map(c => c.close);
     const rsiValues = calculateRSI(closes, rsiPeriod);
-
     for (let i = rsiPeriod; i < candles.length; i++) {
       const rsi = rsiValues[i - rsiPeriod];
-      if (rsi === null || rsi === undefined) continue;
+      if (rsi == null) continue;
       if (candles[i].timestamp < startMs) continue;
-      events.push({
-        timestamp: candles[i].timestamp,
-        symbol,
-        price: candles[i].close,
-        rsi,
-      });
+      events.push({ timestamp: candles[i].timestamp, symbol, price: candles[i].close, rsi });
     }
   }
 
-  // Sort chronologically, break ties alphabetically by symbol
   events.sort((a, b) => a.timestamp - b.timestamp || a.symbol.localeCompare(b.symbol));
 
-  // Simulation state
   const positionsBySymbol = {};
   const lastBuyBySymbol = {};
-  for (const s of symbols) {
-    positionsBySymbol[s] = [];
-    lastBuyBySymbol[s] = 0;
-  }
+  for (const s of symbols) { positionsBySymbol[s] = []; lastBuyBySymbol[s] = 0; }
 
   const trades = [];
   let equity = 0;
+  let realizedProfit = 0;
   const equityCurve = [];
   const lastPriceBySymbol = {};
 
@@ -415,8 +523,11 @@ function simulateMultiBacktest(candlesBySymbol, sma200BySymbol, config, startMs)
     lastPriceBySymbol[symbol] = price;
     const positions = positionsBySymbol[symbol];
 
-    const sma200_1h = findNearestSMA(sma200BySymbol?.[symbol]?.['1h'], timestamp);
-    const sma200_4h = findNearestSMA(sma200BySymbol?.[symbol]?.['4h'], timestamp);
+    const refRSI = getReferenceRSI(referenceRSIBySymbol?.[symbol] || {}, timestamp);
+    const { oversold, overbought, ruleIndex } = resolveRsiThresholds(rsiRules, refRSI, rsiOversold, rsiOverbought);
+
+    const sma200_1h = findNearestValue(sma200BySymbol?.[symbol]?.['1h'], timestamp);
+    const sma200_4h = findNearestValue(sma200BySymbol?.[symbol]?.['4h'], timestamp);
     const filterData = { price, sma200_1h, sma200_4h, rsi };
     const seguroLabel = evaluateConditions(seguro.conditions, seguro.logic, filterData);
     const passesSeguroFilter = seguro.filterEntries
@@ -424,46 +535,39 @@ function simulateMultiBacktest(candlesBySymbol, sma200BySymbol, config, startMs)
       : true;
 
     // BUY
+    const tradeAmt = calcTradeAmount(compound, amount, realizedProfit);
     const canBuy = allowMultiple || positions.length === 0;
     const withinDelay = !minDelay || timestamp - lastBuyBySymbol[symbol] >= minDelay;
     const totalOpenInvested = Object.values(positionsBySymbol).flat().reduce((sum, p) => sum + p.amount, 0);
-    const withinBudget = !maxInvestment || totalOpenInvested + amount <= maxInvestment;
+    const withinBudget = !maxInvestment || totalOpenInvested + tradeAmt <= maxInvestment;
     const withinMaxBuys = !maxBuys || positions.length < maxBuys;
 
-    if (rsi <= rsiOversold && canBuy && withinDelay && withinBudget && withinMaxBuys && passesSeguroFilter) {
-      const feeBuy = amount * (feePercent / 100);
-      const effectiveAmount = amount * feeMultiplier;
+    if (rsi <= oversold && canBuy && withinDelay && withinBudget && withinMaxBuys && passesSeguroFilter) {
+      const feeBuy = tradeAmt * (feePercent / 100);
+      const effectiveAmount = tradeAmt * feeMultiplier;
       const quantity = effectiveAmount / price;
       positions.push({
-        entryPrice: price, amount, quantity, feeBuy,
+        entryPrice: price, amount: tradeAmt, quantity, feeBuy,
         rsiAtOpen: rsi, openedAt: timestamp,
-        sma200_1h, sma200_4h, seguro: seguroLabel, symbol,
+        sma200_1h, sma200_4h, seguro: seguroLabel, symbol, activeRule: ruleIndex,
+        rsi1hAtOpen: refRSI['1h'], rsi4hAtOpen: refRSI['4h'], rsi1dAtOpen: refRSI['1d'],
       });
       lastBuyBySymbol[symbol] = timestamp;
     }
 
-    // Time-based exit
+    // Time exit
     if (timeExitMs > 0 && positions.length > 0) {
       const remaining = [];
       for (const pos of positions) {
         const duration = timestamp - pos.openedAt;
         if (duration >= timeExitMs && rsi >= timeExitRSI) {
-          const grossExit = pos.quantity * price;
-          const feeSell = grossExit * (feePercent / 100);
-          const exitValue = grossExit * feeMultiplier;
-          const pnl = exitValue - pos.amount;
-          const pnlPct = (pnl / pos.amount) * 100;
-          trades.push({
-            symbol, entryPrice: pos.entryPrice, exitPrice: price,
-            amount: pos.amount, quantity: pos.quantity,
-            exitValue, pnl, pnlPct,
-            feeBuy: pos.feeBuy, feeSell, totalFees: pos.feeBuy + feeSell,
-            sma200_1h: pos.sma200_1h, sma200_4h: pos.sma200_4h, seguro: pos.seguro,
-            rsiAtOpen: pos.rsiAtOpen, rsiAtClose: rsi,
-            openedAt: pos.openedAt, closedAt: timestamp,
-            duration: timestamp - pos.openedAt, timeExit: true,
-          });
-          equity += pnl;
+          const trade = closeTrade(pos, price, rsi, timestamp, feePercent, feeMultiplier, { timeExit: true });
+          trade.rsi1hAtClose = refRSI['1h'];
+          trade.rsi4hAtClose = refRSI['4h'];
+          trade.rsi1dAtClose = refRSI['1d'];
+          trades.push(trade);
+          equity += trade.pnl;
+          realizedProfit += trade.pnl;
         } else {
           remaining.push(pos);
         }
@@ -473,29 +577,20 @@ function simulateMultiBacktest(candlesBySymbol, sma200BySymbol, config, startMs)
 
     // SELL
     const currentPositions = positionsBySymbol[symbol];
-    if (rsi >= rsiOverbought && currentPositions.length > 0) {
+    if (rsi >= overbought && currentPositions.length > 0) {
       for (const pos of currentPositions) {
-        const grossExit = pos.quantity * price;
-        const feeSell = grossExit * (feePercent / 100);
-        const exitValue = grossExit * feeMultiplier;
-        const pnl = exitValue - pos.amount;
-        const pnlPct = (pnl / pos.amount) * 100;
-        trades.push({
-          symbol, entryPrice: pos.entryPrice, exitPrice: price,
-          amount: pos.amount, quantity: pos.quantity,
-          exitValue, pnl, pnlPct,
-          feeBuy: pos.feeBuy, feeSell, totalFees: pos.feeBuy + feeSell,
-          sma200_1h: pos.sma200_1h, sma200_4h: pos.sma200_4h, seguro: pos.seguro,
-          rsiAtOpen: pos.rsiAtOpen, rsiAtClose: rsi,
-          openedAt: pos.openedAt, closedAt: timestamp,
-          duration: timestamp - pos.openedAt,
-        });
-        equity += pnl;
+        const trade = closeTrade(pos, price, rsi, timestamp, feePercent, feeMultiplier);
+        trade.rsi1hAtClose = refRSI['1h'];
+        trade.rsi4hAtClose = refRSI['4h'];
+        trade.rsi1dAtClose = refRSI['1d'];
+        trades.push(trade);
+        equity += trade.pnl;
+        realizedProfit += trade.pnl;
       }
       positionsBySymbol[symbol] = [];
     }
 
-    // Equity curve (sampled)
+    // Equity curve
     const totalOpenPnl = Object.entries(positionsBySymbol).reduce((sum, [sym, posArr]) => {
       const symPrice = lastPriceBySymbol[sym] || 0;
       return sum + posArr.reduce((s, p) => s + (p.quantity * symPrice - p.amount), 0);
@@ -503,12 +598,7 @@ function simulateMultiBacktest(candlesBySymbol, sma200BySymbol, config, startMs)
     equityCurve.push({ timestamp, equity: equity + totalOpenPnl });
   }
 
-  // Downsample equity curve
-  const sampledCurve = equityCurve.length > 500
-    ? equityCurve.filter((_, i) => i % Math.ceil(equityCurve.length / 500) === 0)
-    : equityCurve;
-
-  // Compute per-symbol stats
+  // Per-symbol stats
   const bySymbol = {};
   for (const symbol of symbols) {
     const symTrades = trades.filter(t => t.symbol === symbol);
@@ -519,120 +609,85 @@ function simulateMultiBacktest(candlesBySymbol, sma200BySymbol, config, startMs)
     bySymbol[symbol] = {
       trades: symTrades,
       stats: {
-        totalTrades: symTrades.length,
-        wins,
-        losses: symTrades.length - wins,
+        totalTrades: symTrades.length, wins, losses: symTrades.length - wins,
         winRate: symTrades.length > 0 ? (wins / symTrades.length) * 100 : 0,
-        totalPnl,
-        totalPnlPct,
-        totalFees,
+        totalPnl, totalPnlPct, totalFees,
         avgPnlPct: symTrades.length > 0 ? totalPnlPct / symTrades.length : 0,
       },
     };
   }
 
   // Combined stats
-  const wins = trades.filter(t => t.pnl > 0).length;
-  const totalPnl = trades.reduce((sum, t) => sum + t.pnl, 0);
-  const totalPnlPct = trades.reduce((sum, t) => sum + t.pnlPct, 0);
-  const totalFees = trades.reduce((sum, t) => sum + t.totalFees, 0);
+  const combined = computeStats(trades, 0, 0);
+  delete combined.candlesAnalyzed;
+  delete combined.warmupCandles;
   const bestTrade = trades.length > 0 ? trades.reduce((b, t) => t.pnl > b.pnl ? t : b) : null;
   const worstTrade = trades.length > 0 ? trades.reduce((w, t) => t.pnl < w.pnl ? t : w) : null;
+  if (bestTrade) combined.bestTrade = { pnl: bestTrade.pnl, pnlPct: bestTrade.pnlPct, symbol: bestTrade.symbol };
+  if (worstTrade) combined.worstTrade = { pnl: worstTrade.pnl, pnlPct: worstTrade.pnlPct, symbol: worstTrade.symbol };
 
-  return {
-    trades,
-    bySymbol,
-    combined: {
-      totalTrades: trades.length,
-      wins,
-      losses: trades.length - wins,
-      winRate: trades.length > 0 ? (wins / trades.length) * 100 : 0,
-      totalPnl,
-      totalPnlPct,
-      totalFees,
-      avgPnlPct: trades.length > 0 ? totalPnlPct / trades.length : 0,
-      bestTrade: bestTrade ? { pnl: bestTrade.pnl, pnlPct: bestTrade.pnlPct, symbol: bestTrade.symbol } : null,
-      worstTrade: worstTrade ? { pnl: worstTrade.pnl, pnlPct: worstTrade.pnlPct, symbol: worstTrade.symbol } : null,
-    },
-    equityCurve: sampledCurve,
-  };
+  return { trades, bySymbol, combined, equityCurve: downsampleCurve(equityCurve) };
 }
 
 // ============================================================
 // Routes
 // ============================================================
 
+function buildConfig(reqBody, settings) {
+  const sim = settings.simulation || {};
+  const timeframe = reqBody.timeframe || '1h';
+  return {
+    amount: reqBody.amount ?? sim.amount ?? 1000,
+    feePercent: reqBody.feePercent ?? sim.feePercent ?? 0,
+    rsiOversold: reqBody.rsiOversold ?? sim.timeframes?.[timeframe]?.rsiOversold ?? 30,
+    rsiOverbought: reqBody.rsiOverbought ?? sim.timeframes?.[timeframe]?.rsiOverbought ?? 70,
+    allowMultiple: !!reqBody.allowMultiple,
+    maxInvestment: reqBody.maxInvestment ? Number(reqBody.maxInvestment) : 0,
+    minDelay: reqBody.minDelay ? Number(reqBody.minDelay) : 0,
+    maxBuys: reqBody.maxBuys ? Number(reqBody.maxBuys) : 0,
+    timeExitHours: reqBody.timeExitHours ? Number(reqBody.timeExitHours) : 0,
+    timeExitRSI: reqBody.timeExitRSI ? Number(reqBody.timeExitRSI) : 50,
+    seguro: settings.seguro || {},
+    rsiRules: reqBody.rsiRules || null,
+    compound: reqBody.compound || null,
+  };
+}
+
 router.post('/backtest/run', authMiddleware, adminMiddleware, async (req, res) => {
-  const {
-    symbol, timeframe = '1h', fromDate, toDate,
-    amount, feePercent, rsiOversold, rsiOverbought,
-    startMs: clientStartMs, endMs: clientEndMs,
-    allowMultiple, maxInvestment, minDelay,
-    timeExitHours, timeExitRSI, maxBuys,
-  } = req.body;
+  const { symbol, timeframe = '1h', fromDate, toDate, startMs: clientStartMs, endMs: clientEndMs } = req.body;
 
   if (!symbol) return res.status(400).json({ error: 'Symbol is required' });
   if (!fromDate || !toDate) return res.status(400).json({ error: 'Date range is required' });
 
-  // Prefer timestamps sent by the client (computed in user's local timezone).
-  // Fall back to server-side UTC parsing for backwards compatibility.
   const startMs = clientStartMs != null ? clientStartMs : new Date(fromDate).getTime();
   const endMs = clientEndMs != null ? clientEndMs : new Date(toDate + 'T23:59:59').getTime();
 
   if (isNaN(startMs) || isNaN(endMs)) return res.status(400).json({ error: 'Invalid date format' });
   if (startMs >= endMs) return res.status(400).json({ error: 'Start date must be before end date' });
-  if (endMs - startMs > 365 * 24 * 60 * 60 * 1000) {
-    return res.status(400).json({ error: 'Maximum backtest range is 1 year' });
-  }
+  if (endMs - startMs > 365 * 24 * 60 * 60 * 1000) return res.status(400).json({ error: 'Maximum backtest range is 1 year' });
 
   const settings = loadSettings();
-  const sim = settings.simulation || {};
-  const config = {
-    amount: amount ?? sim.amount ?? 1000,
-    feePercent: feePercent ?? sim.feePercent ?? 0,
-    rsiOversold: rsiOversold ?? sim.timeframes?.[timeframe]?.rsiOversold ?? 30,
-    rsiOverbought: rsiOverbought ?? sim.timeframes?.[timeframe]?.rsiOverbought ?? 70,
-    allowMultiple: !!allowMultiple,
-    maxInvestment: maxInvestment ? Number(maxInvestment) : 0,
-    minDelay: minDelay ? Number(minDelay) : 0,
-    maxBuys: maxBuys ? Number(maxBuys) : 0,
-    timeExitHours: timeExitHours ? Number(timeExitHours) : 0,
-    timeExitRSI: timeExitRSI ? Number(timeExitRSI) : 50,
-    seguro: settings.seguro || {},
-  };
+  const config = buildConfig({ ...req.body, timeframe }, settings);
 
   try {
-    logger.info({ symbol, timeframe, fromDate, toDate, config }, 'Backtest started');
+    logger.info({ symbol, timeframe, fromDate, toDate }, 'Backtest started');
 
-    const interval = timeframe;
+    const tfMs = TF_MS_MAP[timeframe] || TF_MS_MAP['1h'];
+    const warmupStart = startMs - 500 * tfMs;
 
-    // Calculate warm-up period: fetch 500 candles before start date for RSI accuracy.
-    // Wilder's smoothing converges after ~250 steps; 500 gives comfortable margin.
-    const tfMsMap = { '15m': 15 * 60 * 1000, '1h': 60 * 60 * 1000, '4h': 4 * 60 * 60 * 1000, '1d': 24 * 60 * 60 * 1000 };
-    const tfMs = tfMsMap[interval] || 60 * 60 * 1000;
-    const warmupMs = 500 * tfMs;
-    const warmupStart = startMs - warmupMs;
+    const candles = await fetchHistoricalCandles(symbol.toUpperCase(), timeframe, warmupStart, endMs);
+    if (candles.length < 30) return res.status(400).json({ error: `Not enough candles (${candles.length}). Need at least 30.` });
 
-    // Fetch candles from warm-up start to end date
-    const candles = await fetchHistoricalCandles(symbol.toUpperCase(), interval, warmupStart, endMs);
-
-    if (candles.length < 30) {
-      return res.status(400).json({ error: `Not enough candles (${candles.length}). Need at least 30.` });
-    }
-
-    // Fetch SMA200 candles (1h + 4h) independently — does not affect main pipeline
     const smaCandles = await fetchSMACandles(symbol.toUpperCase(), startMs, endMs);
     const sma200Data = precomputeSMA200(smaCandles);
 
-    const result = simulateBacktest(candles, config, startMs, sma200Data);
+    const referenceCandles = await fetchReferenceCandles(symbol.toUpperCase(), timeframe, startMs, endMs);
+    const referenceRSI = precomputeReferenceRSI(referenceCandles, candles, timeframe, config.rsiPeriod ?? 14);
+
+    const result = simulateBacktest(candles, config, startMs, sma200Data, referenceRSI);
 
     logger.info({ symbol, trades: result.stats.totalTrades, pnl: result.stats.totalPnl.toFixed(2) }, 'Backtest complete');
-
-    res.json({
-      ...result, config,
-      symbol: symbol.toUpperCase(), timeframe, fromDate, toDate,
-      candlesFetched: candles.length,
-    });
+    res.json({ ...result, config, symbol: symbol.toUpperCase(), timeframe, fromDate, toDate, candlesFetched: candles.length });
   } catch (e) {
     logger.error({ err: e, symbol }, 'Backtest failed');
     res.status(500).json({ error: e.message });
@@ -640,17 +695,9 @@ router.post('/backtest/run', authMiddleware, adminMiddleware, async (req, res) =
 });
 
 router.post('/backtest/run-multi', authMiddleware, adminMiddleware, async (req, res) => {
-  const {
-    symbols, timeframe = '1h', fromDate, toDate,
-    amount, feePercent, rsiOversold, rsiOverbought,
-    startMs: clientStartMs, endMs: clientEndMs,
-    allowMultiple, maxInvestment, minDelay,
-    timeExitHours, timeExitRSI, maxBuys,
-  } = req.body;
+  const { symbols, timeframe = '1h', fromDate, toDate, startMs: clientStartMs, endMs: clientEndMs } = req.body;
 
-  if (!symbols || !Array.isArray(symbols) || symbols.length === 0) {
-    return res.status(400).json({ error: 'symbols array is required' });
-  }
+  if (!symbols || !Array.isArray(symbols) || symbols.length === 0) return res.status(400).json({ error: 'symbols array is required' });
   if (symbols.length > 20) return res.status(400).json({ error: 'Maximum 20 tokens per multi-backtest' });
   if (!fromDate || !toDate) return res.status(400).json({ error: 'Date range is required' });
 
@@ -659,51 +706,34 @@ router.post('/backtest/run-multi', authMiddleware, adminMiddleware, async (req, 
 
   if (isNaN(startMs) || isNaN(endMs)) return res.status(400).json({ error: 'Invalid date format' });
   if (startMs >= endMs) return res.status(400).json({ error: 'Start date must be before end date' });
-  if (endMs - startMs > 365 * 24 * 60 * 60 * 1000) {
-    return res.status(400).json({ error: 'Maximum backtest range is 1 year' });
-  }
+  if (endMs - startMs > 365 * 24 * 60 * 60 * 1000) return res.status(400).json({ error: 'Maximum backtest range is 1 year' });
 
   const settings = loadSettings();
-  const sim = settings.simulation || {};
-  const config = {
-    amount: amount ?? sim.amount ?? 1000,
-    feePercent: feePercent ?? sim.feePercent ?? 0,
-    rsiOversold: rsiOversold ?? sim.timeframes?.[timeframe]?.rsiOversold ?? 30,
-    rsiOverbought: rsiOverbought ?? sim.timeframes?.[timeframe]?.rsiOverbought ?? 70,
-    allowMultiple: !!allowMultiple,
-    maxInvestment: maxInvestment ? Number(maxInvestment) : 0,
-    minDelay: minDelay ? Number(minDelay) : 0,
-    maxBuys: maxBuys ? Number(maxBuys) : 0,
-    timeExitHours: timeExitHours ? Number(timeExitHours) : 0,
-    timeExitRSI: timeExitRSI ? Number(timeExitRSI) : 50,
-    seguro: settings.seguro || {},
-  };
+  const config = buildConfig({ ...req.body, timeframe }, settings);
 
   try {
-    logger.info({ symbols, timeframe, fromDate, toDate, config }, 'Multi-backtest started');
+    logger.info({ symbols, timeframe, fromDate, toDate }, 'Multi-backtest started');
 
-    const interval = timeframe;
-    const tfMsMap = { '15m': 15 * 60 * 1000, '1h': 60 * 60 * 1000, '4h': 4 * 60 * 60 * 1000, '1d': 24 * 60 * 60 * 1000 };
-    const tfMs = tfMsMap[interval] || 60 * 60 * 1000;
-    const warmupMs = 500 * tfMs;
-    const warmupStart = startMs - warmupMs;
+    const tfMs = TF_MS_MAP[timeframe] || TF_MS_MAP['1h'];
+    const warmupStart = startMs - 500 * tfMs;
 
     const candlesBySymbol = {};
     const sma200BySymbol = {};
+    const referenceRSIBySymbol = {};
     const errors = [];
 
     for (const symbol of symbols) {
       const sym = symbol.toUpperCase();
       try {
-        const candles = await fetchHistoricalCandles(sym, interval, warmupStart, endMs);
-        if (candles.length < 30) {
-          errors.push({ symbol: sym, error: `Not enough candles (${candles.length})` });
-          continue;
-        }
+        const candles = await fetchHistoricalCandles(sym, timeframe, warmupStart, endMs);
+        if (candles.length < 30) { errors.push({ symbol: sym, error: `Not enough candles (${candles.length})` }); continue; }
         candlesBySymbol[sym] = candles;
 
         const smaCandles = await fetchSMACandles(sym, startMs, endMs);
         sma200BySymbol[sym] = precomputeSMA200(smaCandles);
+
+        const referenceCandles = await fetchReferenceCandles(sym, timeframe, startMs, endMs);
+        referenceRSIBySymbol[sym] = precomputeReferenceRSI(referenceCandles, candles, timeframe, config.rsiPeriod ?? 14);
 
         await sleep(150);
       } catch (e) {
@@ -712,27 +742,12 @@ router.post('/backtest/run-multi', authMiddleware, adminMiddleware, async (req, 
       }
     }
 
-    if (Object.keys(candlesBySymbol).length === 0) {
-      return res.status(400).json({ error: 'No data fetched for any token', errors });
-    }
+    if (Object.keys(candlesBySymbol).length === 0) return res.status(400).json({ error: 'No data fetched for any token', errors });
 
-    const result = simulateMultiBacktest(candlesBySymbol, sma200BySymbol, config, startMs);
+    const result = simulateMultiBacktest(candlesBySymbol, sma200BySymbol, referenceRSIBySymbol, config, startMs);
 
-    logger.info({
-      symbols: Object.keys(candlesBySymbol),
-      trades: result.combined.totalTrades,
-      pnl: result.combined.totalPnl.toFixed(2),
-      errors: errors.length,
-    }, 'Multi-backtest complete');
-
-    res.json({
-      ...result,
-      config,
-      timeframe,
-      fromDate,
-      toDate,
-      errors: errors.length > 0 ? errors : undefined,
-    });
+    logger.info({ symbols: Object.keys(candlesBySymbol), trades: result.combined.totalTrades, pnl: result.combined.totalPnl.toFixed(2), errors: errors.length }, 'Multi-backtest complete');
+    res.json({ ...result, config, timeframe, fromDate, toDate, errors: errors.length > 0 ? errors : undefined });
   } catch (e) {
     logger.error({ err: e }, 'Multi-backtest failed');
     res.status(500).json({ error: e.message });
@@ -745,11 +760,7 @@ router.get('/backtest/tokens', authMiddleware, adminMiddleware, (req, res) => {
 
 router.get('/backtest/defaults', authMiddleware, adminMiddleware, (req, res) => {
   const sim = loadSettings().simulation || {};
-  res.json({
-    amount: sim.amount ?? 1000,
-    feePercent: sim.feePercent ?? 0,
-    timeframes: sim.timeframes || {},
-  });
+  res.json({ amount: sim.amount ?? 1000, feePercent: sim.feePercent ?? 0, timeframes: sim.timeframes || {} });
 });
 
 module.exports = router;

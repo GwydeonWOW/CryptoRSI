@@ -47,6 +47,8 @@ export default function BacktestPage() {
     maxBuys: 0,
     timeExitHours: 0,
     timeExitRSI: 50,
+    compound: { enabled: false, mode: 'level', step: 500 },
+    rsiRules: { enabled: false, rules: [] },
   });
 
   useEffect(() => {
@@ -282,6 +284,47 @@ export default function BacktestPage() {
           </Field>
         </div>
 
+        {/* Compound Interest */}
+        <div style={{ marginTop: '0.75rem', padding: '0.75rem', background: 'var(--bg)', borderRadius: 8, border: '1px solid var(--surface2)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: form.compound.enabled ? '0.5rem' : 0 }}>
+            <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-dim)' }}>Interes Compuesto</span>
+            <Toggle checked={form.compound.enabled} onChange={v => setForm(f => ({ ...f, compound: { ...f.compound, enabled: v } }))} />
+          </div>
+          {form.compound.enabled && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '0.5rem' }}>
+              <Field label="Modo">
+                <select value={form.compound.mode} onChange={e => setForm(f => ({ ...f, compound: { ...f.compound, mode: e.target.value } }))} style={inputStyle}>
+                  <option value="level">Por nivel</option>
+                  <option value="reinvest">Reinversion total</option>
+                  <option value="step">Por pasos</option>
+                </select>
+              </Field>
+              {form.compound.mode === 'step' && (
+                <Field label="Monto del paso ($)">
+                  <input type="number" value={form.compound.step || ''} onChange={e => setForm(f => ({ ...f, compound: { ...f.compound, step: Number(e.target.value) } }))}
+                    min={100} step={100} placeholder="500" style={inputStyle} />
+                </Field>
+              )}
+              <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', gridColumn: '1 / -1' }}>
+                {form.compound.mode === 'level' && 'Cada vez que el beneficio alcance el monto base, el monto de operacion sube un nivel (1000 → 2000 → 3000...)'}
+                {form.compound.mode === 'reinvest' && 'El monto de cada operacion es el monto base + todo el beneficio acumulado'}
+                {form.compound.mode === 'step' && 'El monto sube en multiplos del paso cada vez que el beneficio cruza un multiplo'}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* RSI Conditional Rules */}
+        <div style={{ marginTop: '0.75rem', padding: '0.75rem', background: 'var(--bg)', borderRadius: 8, border: '1px solid var(--surface2)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: form.rsiRules.enabled ? '0.5rem' : 0 }}>
+            <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-dim)' }}>Reglas RSI Condicionales</span>
+            <Toggle checked={form.rsiRules.enabled} onChange={v => setForm(f => ({ ...f, rsiRules: { ...f.rsiRules, enabled: v } }))} />
+          </div>
+          {form.rsiRules.enabled && (
+            <RsiRulesEditor rules={form.rsiRules.rules} onChange={rules => setForm(f => ({ ...f, rsiRules: { ...f.rsiRules, rules } }))} />
+          )}
+        </div>
+
         {/* Date range */}
         <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', flexWrap: 'wrap', marginBottom: '0.8rem' }}>
           <Field label="Desde" inline>
@@ -314,6 +357,116 @@ export default function BacktestPage() {
       {result && isMulti && (
         <MultiResults result={result} seguroOnly={seguroOnly} setSeguroOnly={setSeguroOnly} form={form} timezone={timezone} />
       )}
+    </div>
+  );
+}
+
+// ============================================================
+// RSI Rules Editor
+// ============================================================
+
+const RSI_RULE_OPS = [
+  { value: '>', label: '>' },
+  { value: '<', label: '<' },
+  { value: '>=', label: '>=' },
+  { value: '<=', label: '<=' },
+  { value: 'between', label: 'entre' },
+];
+
+const RSI_REF_TFS = [
+  { value: '1h', label: 'RSI 1h' },
+  { value: '4h', label: 'RSI 4h' },
+  { value: '1d', label: 'RSI 1d' },
+];
+
+function RsiRulesEditor({ rules, onChange }) {
+  function updateRule(ri, field, value) {
+    onChange(rules.map((r, i) => i === ri ? { ...r, [field]: value } : r));
+  }
+  function updateCondition(ri, ci, field, value) {
+    onChange(rules.map((r, i) => i === ri ? {
+      ...r, conditions: r.conditions.map((c, j) => j === ci ? { ...c, [field]: value } : c),
+    } : r));
+  }
+  function addCondition(ri) {
+    onChange(rules.map((r, i) => i === ri ? {
+      ...r, conditions: [...r.conditions, { timeframe: '1d', op: '>', value: 50 }],
+    } : r));
+  }
+  function removeCondition(ri, ci) {
+    onChange(rules.map((r, i) => i === ri ? {
+      ...r, conditions: r.conditions.filter((_, j) => j !== ci),
+    } : r));
+  }
+  function addRule() {
+    onChange([...rules, { enabled: true, conditions: [{ timeframe: '1d', op: '>', value: 50 }], oversold: 32, overbought: 72 }]);
+  }
+  function removeRule(ri) {
+    onChange(rules.filter((_, i) => i !== ri));
+  }
+
+  const selStyle = { padding: '0.2rem 0.4rem', fontSize: '0.8rem', background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--surface2)', borderRadius: 4 };
+  const numStyle = { width: 55, padding: '0.2rem 0.3rem', fontSize: '0.8rem', textAlign: 'right', background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--surface2)', borderRadius: 4 };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+      <p style={{ fontSize: '0.7rem', color: 'var(--text-dim)', margin: 0 }}>
+        Define umbrales de compra/venta dinamicos segun RSI de otros timeframes. Las reglas se evaluan en orden.
+      </p>
+      {rules.map((rule, ri) => (
+        <div key={ri} style={{ background: 'var(--surface)', border: '1px solid var(--surface2)', borderRadius: 8, padding: '0.6rem 0.75rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text)' }}>Regla {ri + 1}</span>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <Toggle checked={rule.enabled !== false} onChange={v => updateRule(ri, 'enabled', v)} />
+              <button onClick={() => removeRule(ri)} style={{ background: 'rgba(239,68,68,0.1)', color: 'var(--red)', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: '0.75rem', padding: '0.15rem 0.4rem' }}>&times;</button>
+            </div>
+          </div>
+          {/* Conditions */}
+          {(rule.conditions || []).map((cond, ci) => (
+            <div key={ci} style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4, flexWrap: 'wrap' }}>
+              <select value={cond.timeframe} onChange={e => updateCondition(ri, ci, 'timeframe', e.target.value)} style={selStyle}>
+                {RSI_REF_TFS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+              <select value={cond.op} onChange={e => updateCondition(ri, ci, 'op', e.target.value)} style={selStyle}>
+                {RSI_RULE_OPS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+              <input type="number" value={cond.value ?? ''} onChange={e => updateCondition(ri, ci, 'value', Number(e.target.value))}
+                step={1} style={numStyle} />
+              {cond.op === 'between' && (
+                <>
+                  <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>y</span>
+                  <input type="number" value={cond.value2 ?? ''} onChange={e => updateCondition(ri, ci, 'value2', Number(e.target.value))}
+                    step={1} style={numStyle} />
+                </>
+              )}
+              {rule.conditions.length > 1 && (
+                <button onClick={() => removeCondition(ri, ci)} style={{ background: 'none', color: 'var(--text-dim)', border: 'none', cursor: 'pointer', fontSize: '0.7rem' }}>&times;</button>
+              )}
+              {ci < rule.conditions.length - 1 && <span style={{ fontSize: '0.7rem', color: 'var(--blue)', fontWeight: 600 }}>AND</span>}
+            </div>
+          ))}
+          <button onClick={() => addCondition(ri)} style={{ fontSize: '0.7rem', padding: '0.15rem 0.5rem', background: 'var(--surface2)', border: 'none', borderRadius: 4, color: 'var(--text-dim)', cursor: 'pointer', marginBottom: '0.5rem' }}>
+            + Condicion AND
+          </button>
+          {/* Thresholds */}
+          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>Compra RSI &le;</span>
+              <input type="number" value={rule.oversold} onChange={e => updateRule(ri, 'oversold', Number(e.target.value))}
+                min={1} max={100} step={1} style={numStyle} />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>Venta RSI &ge;</span>
+              <input type="number" value={rule.overbought} onChange={e => updateRule(ri, 'overbought', Number(e.target.value))}
+                min={1} max={100} step={1} style={numStyle} />
+            </div>
+          </div>
+        </div>
+      ))}
+      <button onClick={addRule} style={{ fontSize: '0.75rem', padding: '0.4rem 0.8rem', background: 'var(--surface2)', border: 'none', borderRadius: 6, color: 'var(--text-dim)', cursor: 'pointer', alignSelf: 'flex-start' }}>
+        + Regla
+      </button>
     </div>
   );
 }
@@ -465,6 +618,10 @@ function TradesTable({ trades, seguroOnly, timezone, showSymbol }) {
     { key: 'amount', label: 'Inversion', render: v => `$${v?.toFixed(2)}` },
     { key: 'rsiAtOpen', label: 'RSI Compra', render: v => v?.toFixed(1) ?? '-' },
     { key: 'rsiAtClose', label: 'RSI Venta', render: v => v?.toFixed(1) ?? '-' },
+    { key: 'rsi1hAtClose', label: 'RSI 1h', render: v => v != null ? v.toFixed(1) : '-' },
+    { key: 'rsi4hAtClose', label: 'RSI 4h', render: v => v != null ? v.toFixed(1) : '-' },
+    { key: 'rsi1dAtClose', label: 'RSI 1d', render: v => v != null ? v.toFixed(1) : '-' },
+    { key: 'activeRule', label: 'Regla', render: v => v != null && v >= 0 ? `R${v + 1}` : '' },
     { key: 'pnl', label: 'P&L ($)', render: v => (
       <span style={{ color: v >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 600 }}>{formatPnl(v)}</span>
     )},
@@ -614,7 +771,7 @@ function exportCSV(result, form, timezone, isMulti) {
   const stats = isMulti ? result.combined : result.stats;
   const symbolLabel = isMulti ? Object.keys(result.bySymbol || {}).join('+') : form.symbol;
 
-  const headers = ['Token', 'Apertura', 'Cierre', 'Duracion', 'P. Compra', 'P. Venta', 'Inversion', 'RSI Compra', 'RSI Venta', 'P&L ($)', 'P&L (%)', 'Fee Compra', 'Fee Venta', 'Fees Total', 'SMA200 1h', 'SMA200 4h', 'Seguro', 'Time Exit'];
+  const headers = ['Token', 'Apertura', 'Cierre', 'Duracion', 'P. Compra', 'P. Venta', 'Inversion', 'RSI Compra', 'RSI Venta', 'RSI 1h', 'RSI 4h', 'RSI 1d', 'Regla', 'P&L ($)', 'P&L (%)', 'Fee Compra', 'Fee Venta', 'Fees Total', 'SMA200 1h', 'SMA200 4h', 'Seguro', 'Time Exit'];
   const rows = trades.map(t => [
     t.symbol || form.symbol,
     formatTs(t.openedAt, timezone),
@@ -625,6 +782,10 @@ function exportCSV(result, form, timezone, isMulti) {
     t.amount?.toFixed(2),
     t.rsiAtOpen?.toFixed(1) ?? '',
     t.rsiAtClose?.toFixed(1) ?? '',
+    t.rsi1hAtClose != null ? t.rsi1hAtClose.toFixed(1) : '',
+    t.rsi4hAtClose != null ? t.rsi4hAtClose.toFixed(1) : '',
+    t.rsi1dAtClose != null ? t.rsi1dAtClose.toFixed(1) : '',
+    t.activeRule != null && t.activeRule >= 0 ? `R${t.activeRule + 1}` : '',
     t.pnl?.toFixed(2),
     t.pnlPct?.toFixed(2),
     t.feeBuy?.toFixed(2) ?? '',
